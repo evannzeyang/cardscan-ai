@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "CardScan AI"
+version = "1.0.0"
+id = "artifacts/cardscan-ai"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18889
+
+[services.development]
+run = "pnpm --filter @workspace/cardscan-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/cardscan-ai", "run", "build" ]
+publicDir = "artifacts/cardscan-ai/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18889"
+BASE_PATH = "/"

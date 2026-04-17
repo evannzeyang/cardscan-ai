@@ -4,6 +4,15 @@
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
 
+## Artifacts
+
+### CardScan AI (`artifacts/cardscan-ai`)
+- Mobile-first web app for scanning business cards with Google Gemini AI
+- React + Vite + Tailwind CSS, deployed at `/`
+- All data stored in localStorage (no backend needed)
+- Google Gemini API v1 (`gemini-1.5-flash-latest`) for image analysis
+- Features: Dashboard/contacts table, scan page (camera/upload), review & edit, CSV export, settings (API key)
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces

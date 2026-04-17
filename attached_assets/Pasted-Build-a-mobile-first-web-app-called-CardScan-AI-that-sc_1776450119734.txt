@@ -1,0 +1,72 @@
+Build a mobile-first web app called "CardScan AI" that scans business cards and extracts contact info using AI.
+
+Tech Stack:
+- React + Tailwind CSS
+- Use Google Gemini API (IMPORTANT: use API version v1, not v1beta)
+- Use model: "gemini-1.5-flash-latest"
+- Store all data in localStorage
+
+Core Features:
+
+1. Home / Dashboard
+- Clean header with app name (CardScan AI) and teal/dark theme
+- "📷 Scan New Card" button
+- Table of saved contacts with columns:
+  Name, Title, Company, Email, Phone, Website, LinkedIn, Company Summary
+- "Export CSV" button
+- Empty state message when no contacts exist
+
+2. Scan Page
+- Provide TWO options:
+  A) "📷 Take Photo" (mobile camera)
+  B) "🖼️ Upload Image"
+
+- Use:
+  <input type="file" accept="image/*">
+  (DO NOT use capture="environment" so iPhone shows both camera + library)
+
+- Show preview of selected image
+- "Analyze Card" button
+- Show loading spinner during processing
+
+3. Gemini API Integration (CRITICAL - MUST BE CORRECT)
+
+- Convert the selected image to BASE64
+- Send request to:
+
+https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=API_KEY
+
+- Request body MUST follow this structure:
+
+{
+  "contents": [
+    {
+      "parts": [
+        { "text": "Extract all information from this business card and return it as JSON with these exact keys: name, title, company, email, phone, website, linkedin, address. Then add a 'companySummary' key with 2-3 sentences describing what this company likely does." },
+        {
+          "inline_data": {
+            "mime_type": "image/jpeg",
+            "data": "<BASE64_IMAGE>"
+          }
+        }
+      ]
+    }
+  ]
+}
+
+- Parse the response safely
+- Handle cases where JSON is malformed (try/catch)
+
+4. Review & Save Screen
+- Show extracted fields in editable inputs:
+  name, title, company, email, phone, website, linkedin, address
+- Show companySummary in a textarea
+- Add warning text:
+  "AI results may not be 100% accurate. Please review before saving."
+- "Save Contact" → store in localStorage
+- "Rescan" button
+
+5. Settings
+- Gear icon in header
+- Modal to input and save Gemini API key (localStorage)
+- Do NOT hardcode API key
