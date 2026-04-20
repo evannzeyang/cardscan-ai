@@ -75,17 +75,23 @@ router.post("/sheets/append", async (req, res): Promise<void> => {
     const spreadsheetId = await findSpreadsheetId(auth);
 
     const sheets = google.sheets({ version: "v4", auth });
-    await sheets.spreadsheets.values.append({
+    const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `'${TAB_NAME}'!B:H`,
-      valueInputOption: "RAW",
+      range: `'${TAB_NAME}'!A:H`,
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
       requestBody: {
-        values: [[businessName, businessAddress, city, province, fullCivicAddress, latitude, longitude]],
+        values: [["", businessName, businessAddress, city, province, fullCivicAddress, latitude, longitude]],
       },
     });
 
-    req.log.info({ businessName }, "Appended row to Google Sheet");
-    res.json(AppendToSheetResponse.parse({ success: true, message: "Row appended successfully" }));
+    const updatedRange = appendResponse.data.updates?.updatedRange ?? "";
+    const rowMatch = updatedRange.match(/:([A-Z]+(\d+))$/);
+    const rowNumber = rowMatch ? rowMatch[2] : "unknown";
+
+    console.log(`Successfully added ${businessName} to Row ${rowNumber}`);
+    req.log.info({ businessName, rowNumber, updatedRange }, "Appended row to Google Sheet");
+    res.json(AppendToSheetResponse.parse({ success: true, message: `Row appended successfully at row ${rowNumber}` }));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     logger.error({ err }, "Failed to append to Google Sheet");
