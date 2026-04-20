@@ -6,6 +6,7 @@ import { logger } from "../lib/logger";
 const router: IRouter = Router();
 
 const SHEET_NAME = "BCoC Members";
+const TAB_NAME = "Burlington_Business_Directory_2024";
 
 async function getAuthClient() {
   const credentialsRaw = process.env["GOOGLE_CREDENTIALS"];
@@ -76,7 +77,7 @@ router.post("/sheets/append", async (req, res): Promise<void> => {
     const sheets = google.sheets({ version: "v4", auth });
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${SHEET_NAME}!B:H`,
+      range: `'${TAB_NAME}'!B:H`,
       valueInputOption: "RAW",
       requestBody: {
         values: [[businessName, businessAddress, city, province, fullCivicAddress, latitude, longitude]],
