@@ -76,7 +76,7 @@ router.post("/sheets/append", async (req, res): Promise<void> => {
     const sheets = google.sheets({ version: "v4", auth });
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: `${SHEET_NAME}!A:G`,
+      range: `${SHEET_NAME}!B:H`,
       valueInputOption: "RAW",
       requestBody: {
         values: [[businessName, businessAddress, city, province, fullCivicAddress, latitude, longitude]],
