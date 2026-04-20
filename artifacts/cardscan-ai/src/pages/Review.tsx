@@ -67,7 +67,7 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
   async function handleSave() {
     setSaving(true);
 
-    const contactData: Omit<Contact, "id" | "scannedAt"> = {
+    const contactData: Omit<Contact, "id" | "scannedAt" | "syncedToSheets"> = {
       name: form.name,
       title: form.title,
       company: form.company,
@@ -77,6 +77,7 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
       linkedin: form.linkedin,
       address: form.address,
       companySummary: form.companySummary,
+      geoData: geoData ?? undefined,
     };
 
     saveContact(contactData);
@@ -130,7 +131,6 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
           </p>
         </div>
 
-        {/* Image preview (small) */}
         {imageUrl && (
           <div className="mb-6 rounded-xl overflow-hidden border border-border">
             <img
@@ -142,7 +142,6 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
           </div>
         )}
 
-        {/* AI warning */}
         <div className="flex items-start gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-4 mb-6">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <p className="text-sm text-amber-700 dark:text-amber-300">
@@ -150,7 +149,6 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
           </p>
         </div>
 
-        {/* Form fields */}
         <div className="space-y-4 mb-6">
           {fields.map(({ key, label, type }) => (
             <div key={key}>
@@ -183,7 +181,6 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
           </div>
         </div>
 
-        {/* Google Sheet geo preview (subtle, info only) */}
         {geoData && (
           <div className="rounded-xl border border-border bg-muted/30 p-4 mb-6 text-xs text-muted-foreground space-y-1">
             <p className="font-medium text-foreground text-sm mb-2">Google Sheet data (auto-filled)</p>
@@ -197,7 +194,6 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
           </div>
         )}
 
-        {/* Actions */}
         <div className="flex gap-3">
           <Button
             variant="outline"

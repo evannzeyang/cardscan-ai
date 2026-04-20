@@ -1,3 +1,13 @@
+export interface GeoData {
+  businessName: string;
+  businessAddress: string;
+  city: string;
+  province: string;
+  fullCivicAddress: string;
+  latitude: string;
+  longitude: string;
+}
+
 export interface Contact {
   id: string;
   name: string;
@@ -10,6 +20,8 @@ export interface Contact {
   address: string;
   companySummary: string;
   scannedAt: string;
+  syncedToSheets?: boolean;
+  geoData?: GeoData;
 }
 
 const CONTACTS_KEY = "cardscan_contacts";
@@ -25,16 +37,33 @@ export function getContacts(): Contact[] {
   }
 }
 
-export function saveContact(contact: Omit<Contact, "id" | "scannedAt">): Contact {
+export function saveContact(
+  contact: Omit<Contact, "id" | "scannedAt" | "syncedToSheets">
+): Contact {
   const contacts = getContacts();
   const newContact: Contact = {
     ...contact,
     id: crypto.randomUUID(),
     scannedAt: new Date().toISOString(),
+    syncedToSheets: false,
   };
   contacts.unshift(newContact);
   localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
   return newContact;
+}
+
+export function updateContact(
+  id: string,
+  updates: Partial<Omit<Contact, "id" | "scannedAt">>
+): void {
+  const contacts = getContacts().map((c) =>
+    c.id === id ? { ...c, ...updates } : c
+  );
+  localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+}
+
+export function markAsSynced(id: string): void {
+  updateContact(id, { syncedToSheets: true });
 }
 
 export function deleteContact(id: string): void {
@@ -62,6 +91,7 @@ export function exportContactsCSV(contacts: Contact[]): void {
     "Address",
     "Company Summary",
     "Scanned At",
+    "Synced to Sheets",
   ];
 
   const rows = contacts.map((c) => [
@@ -75,6 +105,7 @@ export function exportContactsCSV(contacts: Contact[]): void {
     c.address,
     c.companySummary,
     new Date(c.scannedAt).toLocaleString(),
+    c.syncedToSheets ? "Yes" : "No",
   ]);
 
   const csvContent = [headers, ...rows]

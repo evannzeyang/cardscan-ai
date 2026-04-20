@@ -7,6 +7,7 @@ import Header from "@/components/Header";
 import Dashboard from "@/pages/Dashboard";
 import Scan from "@/pages/Scan";
 import Review from "@/pages/Review";
+import Contacts from "@/pages/Contacts";
 import NotFound from "@/pages/not-found";
 import type { AnalysisResult } from "@/lib/gemini";
 
@@ -26,6 +27,7 @@ function AppRoutes() {
       <Header />
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/contacts" component={Contacts} />
         <Route path="/scan">
           {() => <Scan onAnalyzed={handleAnalyzed} />}
         </Route>

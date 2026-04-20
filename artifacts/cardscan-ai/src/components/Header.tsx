@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Settings, X, Eye, EyeOff, CheckCircle } from "lucide-react";
+import { Settings, X, Eye, EyeOff, CheckCircle, TableProperties, Scan } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,47 +20,65 @@ export default function Header() {
     setShowSettings(false);
   }
 
-  const pageTitle =
-    location === "/scan"
-      ? "Scan Card"
-      : location === "/review"
-      ? "Review"
-      : "Dashboard";
-
   return (
     <>
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
-          {/* Logo + title */}
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-4">
+          {/* Logo */}
           <button
             onClick={() => setLocation("/")}
-            className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2.5 hover:opacity-80 transition-opacity shrink-0"
             data-testid="button-home"
           >
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="5" width="20" height="14" rx="2" />
                 <path d="M6 9h4" /><path d="M6 13h8" /><path d="M14 9h4" />
               </svg>
             </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-base font-bold text-foreground tracking-tight">CardScan AI</span>
-              {location !== "/" && (
-                <span className="text-xs text-muted-foreground">{pageTitle}</span>
-              )}
-            </div>
+            <span className="text-base font-bold text-foreground tracking-tight">CardScan AI</span>
           </button>
 
-          {/* Settings gear */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => setShowSettings(true)}
-            data-testid="button-settings"
-          >
-            <Settings className="h-4.5 w-4.5" />
-          </Button>
+          {/* Nav links */}
+          <nav className="flex items-center gap-1 ml-2">
+            <button
+              onClick={() => setLocation("/scan")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                location === "/scan"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+              data-testid="nav-scan"
+            >
+              <Scan className="h-3.5 w-3.5" />
+              Scan
+            </button>
+            <button
+              onClick={() => setLocation("/contacts")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                location === "/contacts"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+              data-testid="nav-contacts"
+            >
+              <TableProperties className="h-3.5 w-3.5" />
+              Contacts
+            </button>
+          </nav>
+
+          {/* Spacer + Settings */}
+          <div className="ml-auto">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9"
+              onClick={() => setShowSettings(true)}
+              data-testid="button-settings"
+            >
+              <Settings className="h-4.5 w-4.5" />
+            </Button>
+          </div>
         </div>
       </header>
 
