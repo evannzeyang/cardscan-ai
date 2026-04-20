@@ -2,11 +2,11 @@ import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { Camera, ImagePlus, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { analyzeBusinessCard, type ExtractedCard } from "@/lib/gemini";
+import { analyzeBusinessCard, type AnalysisResult } from "@/lib/gemini";
 import { getApiKey } from "@/lib/storage";
 
 interface ScanPageProps {
-  onAnalyzed: (data: ExtractedCard, imageUrl: string) => void;
+  onAnalyzed: (result: AnalysisResult, imageUrl: string) => void;
 }
 
 export default function Scan({ onAnalyzed }: ScanPageProps) {

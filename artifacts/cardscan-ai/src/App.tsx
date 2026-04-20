@@ -8,16 +8,16 @@ import Dashboard from "@/pages/Dashboard";
 import Scan from "@/pages/Scan";
 import Review from "@/pages/Review";
 import NotFound from "@/pages/not-found";
-import type { ExtractedCard } from "@/lib/gemini";
+import type { AnalysisResult } from "@/lib/gemini";
 
 const queryClient = new QueryClient();
 
 function AppRoutes() {
-  const [extractedData, setExtractedData] = useState<ExtractedCard | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [scannedImageUrl, setScannedImageUrl] = useState<string>("");
 
-  function handleAnalyzed(data: ExtractedCard, imageUrl: string) {
-    setExtractedData(data);
+  function handleAnalyzed(result: AnalysisResult, imageUrl: string) {
+    setAnalysisResult(result);
     setScannedImageUrl(imageUrl);
   }
 
@@ -30,7 +30,13 @@ function AppRoutes() {
           {() => <Scan onAnalyzed={handleAnalyzed} />}
         </Route>
         <Route path="/review">
-          {() => <Review extractedData={extractedData} imageUrl={scannedImageUrl} />}
+          {() => (
+            <Review
+              extractedData={analysisResult?.card ?? null}
+              geoData={analysisResult?.geo ?? null}
+              imageUrl={scannedImageUrl}
+            />
+          )}
         </Route>
         <Route component={NotFound} />
       </Switch>

@@ -5,9 +5,6 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-export interface HealthStatus {
-  status: string;
-}
 
 export interface AppendSheetRowBody {
   businessName: string;
@@ -17,9 +14,4 @@ export interface AppendSheetRowBody {
   fullCivicAddress: string;
   latitude: string;
   longitude: string;
-}
-
-export interface AppendSheetRowResponse {
-  success: boolean;
-  message?: string;
 }

@@ -5,18 +5,25 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  AppendSheetRowBody,
+  AppendSheetRowResponse,
+  HealthStatus,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +106,89 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Append a row to the BCoC Members Google Sheet
+ */
+export const getAppendToSheetUrl = () => {
+  return `/api/sheets/append`;
+};
+
+export const appendToSheet = async (
+  appendSheetRowBody: AppendSheetRowBody,
+  options?: RequestInit,
+): Promise<AppendSheetRowResponse> => {
+  return customFetch<AppendSheetRowResponse>(getAppendToSheetUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(appendSheetRowBody),
+  });
+};
+
+export const getAppendToSheetMutationOptions = <
+  TError = ErrorType<AppendSheetRowResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof appendToSheet>>,
+    TError,
+    { data: BodyType<AppendSheetRowBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof appendToSheet>>,
+  TError,
+  { data: BodyType<AppendSheetRowBody> },
+  TContext
+> => {
+  const mutationKey = ["appendToSheet"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof appendToSheet>>,
+    { data: BodyType<AppendSheetRowBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return appendToSheet(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AppendToSheetMutationResult = NonNullable<
+  Awaited<ReturnType<typeof appendToSheet>>
+>;
+export type AppendToSheetMutationBody = BodyType<AppendSheetRowBody>;
+export type AppendToSheetMutationError = ErrorType<AppendSheetRowResponse>;
+
+/**
+ * @summary Append a row to the BCoC Members Google Sheet
+ */
+export const useAppendToSheet = <
+  TError = ErrorType<AppendSheetRowResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof appendToSheet>>,
+    TError,
+    { data: BodyType<AppendSheetRowBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof appendToSheet>>,
+  TError,
+  { data: BodyType<AppendSheetRowBody> },
+  TContext
+> => {
+  return useMutation(getAppendToSheetMutationOptions(options));
+};

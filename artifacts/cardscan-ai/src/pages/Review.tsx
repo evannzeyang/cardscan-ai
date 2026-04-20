@@ -1,22 +1,37 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { Save, RotateCcw, AlertTriangle } from "lucide-react";
+import { Save, RotateCcw, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { saveContact, type Contact } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
-import type { ExtractedCard } from "@/lib/gemini";
+import type { ExtractedCard, ExtractedGeoData } from "@/lib/gemini";
 
 interface ReviewPageProps {
   extractedData: ExtractedCard | null;
+  geoData: ExtractedGeoData | null;
   imageUrl: string;
 }
 
-export default function Review({ extractedData, imageUrl }: ReviewPageProps) {
+async function appendToSheet(geo: ExtractedGeoData): Promise<void> {
+  const response = await fetch("/api/sheets/append", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(geo),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error((data as { message?: string }).message ?? `HTTP ${response.status}`);
+  }
+}
+
+export default function Review({ extractedData, geoData, imageUrl }: ReviewPageProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState<ExtractedCard>(
     extractedData ?? {
@@ -49,7 +64,9 @@ export default function Review({ extractedData, imageUrl }: ReviewPageProps) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleSave() {
+  async function handleSave() {
+    setSaving(true);
+
     const contactData: Omit<Contact, "id" | "scannedAt"> = {
       name: form.name,
       title: form.title,
@@ -61,12 +78,38 @@ export default function Review({ extractedData, imageUrl }: ReviewPageProps) {
       address: form.address,
       companySummary: form.companySummary,
     };
+
     saveContact(contactData);
-    toast({ title: "Contact saved!", description: `${form.name || "Contact"} has been saved.` });
+
+    if (geoData) {
+      try {
+        await appendToSheet(geoData);
+        toast({
+          title: "Contact saved!",
+          description: (
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+              {form.name || "Contact"} saved and added to BCoC Members sheet.
+            </span>
+          ),
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast({
+          title: "Contact saved",
+          description: `Saved locally. Google Sheet update failed: ${msg}`,
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({ title: "Contact saved!", description: `${form.name || "Contact"} has been saved.` });
+    }
+
+    setSaving(false);
     setLocation("/");
   }
 
-  const fields: Array<{ key: keyof ExtractedCard; label: string; type?: string; multiline?: boolean }> = [
+  const fields: Array<{ key: keyof ExtractedCard; label: string; type?: string }> = [
     { key: "name", label: "Full Name" },
     { key: "title", label: "Job Title" },
     { key: "company", label: "Company" },
@@ -140,12 +183,27 @@ export default function Review({ extractedData, imageUrl }: ReviewPageProps) {
           </div>
         </div>
 
+        {/* Google Sheet geo preview (subtle, info only) */}
+        {geoData && (
+          <div className="rounded-xl border border-border bg-muted/30 p-4 mb-6 text-xs text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground text-sm mb-2">Google Sheet data (auto-filled)</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <span className="font-medium">City:</span><span>{geoData.city}</span>
+              <span className="font-medium">Province:</span><span>{geoData.province}</span>
+              <span className="font-medium">Latitude:</span><span>{geoData.latitude}</span>
+              <span className="font-medium">Longitude:</span><span>{geoData.longitude}</span>
+            </div>
+            <p className="mt-2 text-xs">{geoData.fullCivicAddress}</p>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex gap-3">
           <Button
             variant="outline"
             className="flex-1"
             onClick={() => setLocation("/scan")}
+            disabled={saving}
             data-testid="button-rescan"
           >
             <RotateCcw className="h-4 w-4 mr-2" />
@@ -154,10 +212,20 @@ export default function Review({ extractedData, imageUrl }: ReviewPageProps) {
           <Button
             className="flex-1 font-semibold"
             onClick={handleSave}
+            disabled={saving}
             data-testid="button-save-contact"
           >
-            <Save className="h-4 w-4 mr-2" />
-            Save Contact
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Save Contact
+              </>
+            )}
           </Button>
         </div>
       </div>

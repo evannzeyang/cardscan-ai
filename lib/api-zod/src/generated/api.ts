@@ -14,3 +14,21 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary Append a row to the BCoC Members Google Sheet
+ */
+export const AppendToSheetBody = zod.object({
+  businessName: zod.string(),
+  businessAddress: zod.string(),
+  city: zod.string(),
+  province: zod.string(),
+  fullCivicAddress: zod.string(),
+  latitude: zod.string(),
+  longitude: zod.string(),
+});
+
+export const AppendToSheetResponse = zod.object({
+  success: zod.boolean(),
+  message: zod.string().optional(),
+});
