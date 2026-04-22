@@ -8,6 +8,15 @@ export interface GeoData {
   longitude: string;
 }
 
+export interface Note {
+  id: string;
+  type: "written" | "voice";
+  text: string;
+  aiSummary?: string;
+  todoItems?: string[];
+  createdAt: string;
+}
+
 export interface Contact {
   id: string;
   name: string;
@@ -22,6 +31,8 @@ export interface Contact {
   scannedAt: string;
   syncedToSheets?: boolean;
   geoData?: GeoData;
+  eventId?: string;
+  notes?: Note[];
 }
 
 const CONTACTS_KEY = "cardscan_contacts";
@@ -37,6 +48,10 @@ export function getContacts(): Contact[] {
   }
 }
 
+export function getContact(id: string): Contact | undefined {
+  return getContacts().find((c) => c.id === id);
+}
+
 export function saveContact(
   contact: Omit<Contact, "id" | "scannedAt" | "syncedToSheets">
 ): Contact {
@@ -46,6 +61,7 @@ export function saveContact(
     id: crypto.randomUUID(),
     scannedAt: new Date().toISOString(),
     syncedToSheets: false,
+    notes: [],
   };
   contacts.unshift(newContact);
   localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
@@ -71,6 +87,47 @@ export function deleteContact(id: string): void {
   localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
 }
 
+export function addNoteToContact(
+  contactId: string,
+  note: Omit<Note, "id" | "createdAt">
+): Note {
+  const contacts = getContacts();
+  const newNote: Note = {
+    ...note,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+  };
+  const updated = contacts.map((c) => {
+    if (c.id !== contactId) return c;
+    return { ...c, notes: [...(c.notes ?? []), newNote] };
+  });
+  localStorage.setItem(CONTACTS_KEY, JSON.stringify(updated));
+  return newNote;
+}
+
+export function deleteNoteFromContact(contactId: string, noteId: string): void {
+  const contacts = getContacts().map((c) => {
+    if (c.id !== contactId) return c;
+    return { ...c, notes: (c.notes ?? []).filter((n) => n.id !== noteId) };
+  });
+  localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+}
+
+export function updateNoteOnContact(
+  contactId: string,
+  noteId: string,
+  updates: Partial<Omit<Note, "id" | "createdAt">>
+): void {
+  const contacts = getContacts().map((c) => {
+    if (c.id !== contactId) return c;
+    const notes = (c.notes ?? []).map((n) =>
+      n.id === noteId ? { ...n, ...updates } : n
+    );
+    return { ...c, notes };
+  });
+  localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+}
+
 export function getApiKey(): string {
   return localStorage.getItem(API_KEY_KEY) ?? "";
 }
@@ -81,38 +138,22 @@ export function saveApiKey(key: string): void {
 
 export function exportContactsCSV(contacts: Contact[]): void {
   const headers = [
-    "Name",
-    "Title",
-    "Company",
-    "Email",
-    "Phone",
-    "Website",
-    "LinkedIn",
-    "Address",
-    "Company Summary",
-    "Scanned At",
-    "Synced to Sheets",
+    "Name", "Title", "Company", "Email", "Phone",
+    "Website", "LinkedIn", "Address", "Company Summary",
+    "Scanned At", "Synced to Sheets", "Event ID",
   ];
 
   const rows = contacts.map((c) => [
-    c.name,
-    c.title,
-    c.company,
-    c.email,
-    c.phone,
-    c.website,
-    c.linkedin,
-    c.address,
-    c.companySummary,
+    c.name, c.title, c.company, c.email, c.phone,
+    c.website, c.linkedin, c.address, c.companySummary,
     new Date(c.scannedAt).toLocaleString(),
     c.syncedToSheets ? "Yes" : "No",
+    c.eventId ?? "",
   ]);
 
   const csvContent = [headers, ...rows]
     .map((row) =>
-      row
-        .map((cell) => `"${(cell ?? "").replace(/"/g, '""')}"`)
-        .join(",")
+      row.map((cell) => `"${(cell ?? "").replace(/"/g, '""')}"`).join(",")
     )
     .join("\n");
 

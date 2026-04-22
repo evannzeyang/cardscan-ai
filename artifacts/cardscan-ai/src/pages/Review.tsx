@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { saveContact, type Contact } from "@/lib/storage";
+import { getEvents } from "@/lib/events-storage";
 import { useToast } from "@/hooks/use-toast";
 import type { ExtractedCard, ExtractedGeoData } from "@/lib/gemini";
 
@@ -21,7 +22,6 @@ async function appendToSheet(geo: ExtractedGeoData): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(geo),
   });
-
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     throw new Error((data as { message?: string }).message ?? `HTTP ${response.status}`);
@@ -32,29 +32,22 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
+  const events = getEvents();
 
   const [form, setForm] = useState<ExtractedCard>(
     extractedData ?? {
-      name: "",
-      title: "",
-      company: "",
-      email: "",
-      phone: "",
-      website: "",
-      linkedin: "",
-      address: "",
-      companySummary: "",
+      name: "", title: "", company: "", email: "",
+      phone: "", website: "", linkedin: "", address: "", companySummary: "",
     }
   );
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
 
   if (!extractedData) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center px-4">
         <div className="text-center">
           <p className="text-muted-foreground mb-4">No card data to review.</p>
-          <Button onClick={() => setLocation("/scan")} data-testid="button-go-scan">
-            Scan a Card
-          </Button>
+          <Button onClick={() => setLocation("/scan")} data-testid="button-go-scan">Scan a Card</Button>
         </div>
       </div>
     );
@@ -68,16 +61,13 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
     setSaving(true);
 
     const contactData: Omit<Contact, "id" | "scannedAt" | "syncedToSheets"> = {
-      name: form.name,
-      title: form.title,
-      company: form.company,
-      email: form.email,
-      phone: form.phone,
-      website: form.website,
-      linkedin: form.linkedin,
-      address: form.address,
+      name: form.name, title: form.title, company: form.company,
+      email: form.email, phone: form.phone, website: form.website,
+      linkedin: form.linkedin, address: form.address,
       companySummary: form.companySummary,
       geoData: geoData ?? undefined,
+      eventId: selectedEventId || undefined,
+      notes: [],
     };
 
     saveContact(contactData);
@@ -107,7 +97,7 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
     }
 
     setSaving(false);
-    setLocation("/");
+    setLocation("/contacts");
   }
 
   const fields: Array<{ key: keyof ExtractedCard; label: string; type?: string }> = [
@@ -126,59 +116,61 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
       <div className="max-w-lg mx-auto px-4 py-8">
         <div className="text-center mb-6">
           <h2 className="text-xl font-semibold text-foreground">Review & Save</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Review the extracted info before saving
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Review the extracted info before saving</p>
         </div>
 
         {imageUrl && (
           <div className="mb-6 rounded-xl overflow-hidden border border-border">
-            <img
-              src={imageUrl}
-              alt="Scanned business card"
-              className="w-full object-contain max-h-40 bg-muted/30"
-              data-testid="img-scanned-card"
-            />
+            <img src={imageUrl} alt="Scanned business card" className="w-full object-contain max-h-40 bg-muted/30" data-testid="img-scanned-card" />
           </div>
         )}
 
         <div className="flex items-start gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-4 mb-6">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-700 dark:text-amber-300">
-            AI results may not be 100% accurate. Please review before saving.
-          </p>
+          <p className="text-sm text-amber-700 dark:text-amber-300">AI results may not be 100% accurate. Please review before saving.</p>
         </div>
 
         <div className="space-y-4 mb-6">
           {fields.map(({ key, label, type }) => (
             <div key={key}>
-              <Label htmlFor={`field-${key}`} className="text-sm font-medium text-foreground mb-1.5 block">
-                {label}
-              </Label>
+              <Label htmlFor={`field-${key}`} className="text-sm font-medium text-foreground mb-1.5 block">{label}</Label>
               <Input
-                id={`field-${key}`}
-                type={type ?? "text"}
-                value={form[key]}
+                id={`field-${key}`} type={type ?? "text"} value={form[key]}
                 onChange={(e) => handleChange(key, e.target.value)}
-                placeholder={`Enter ${label.toLowerCase()}`}
-                data-testid={`input-${key}`}
+                placeholder={`Enter ${label.toLowerCase()}`} data-testid={`input-${key}`}
               />
             </div>
           ))}
 
           <div>
-            <Label htmlFor="field-companySummary" className="text-sm font-medium text-foreground mb-1.5 block">
-              Company Summary
-            </Label>
+            <Label htmlFor="field-companySummary" className="text-sm font-medium text-foreground mb-1.5 block">Company Summary</Label>
             <Textarea
-              id="field-companySummary"
-              value={form.companySummary}
+              id="field-companySummary" value={form.companySummary}
               onChange={(e) => handleChange("companySummary", e.target.value)}
-              placeholder="AI-generated summary of the company..."
-              rows={4}
-              data-testid="input-companySummary"
+              placeholder="AI-generated summary of the company..." rows={4} data-testid="input-companySummary"
             />
           </div>
+
+          {/* Event link */}
+          {events.length > 0 && (
+            <div>
+              <Label htmlFor="field-event" className="text-sm font-medium text-foreground mb-1.5 block">Link to Event (optional)</Label>
+              <select
+                id="field-event"
+                value={selectedEventId}
+                onChange={(e) => setSelectedEventId(e.target.value)}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                data-testid="select-event"
+              >
+                <option value="">— No event —</option>
+                {events.map((ev) => (
+                  <option key={ev.id} value={ev.id}>
+                    {ev.title} ({new Date(ev.dateTime).toLocaleDateString()})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {geoData && (
@@ -195,33 +187,11 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
         )}
 
         <div className="flex gap-3">
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={() => setLocation("/scan")}
-            disabled={saving}
-            data-testid="button-rescan"
-          >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Rescan
+          <Button variant="outline" className="flex-1" onClick={() => setLocation("/scan")} disabled={saving} data-testid="button-rescan">
+            <RotateCcw className="h-4 w-4 mr-2" />Rescan
           </Button>
-          <Button
-            className="flex-1 font-semibold"
-            onClick={handleSave}
-            disabled={saving}
-            data-testid="button-save-contact"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Save Contact
-              </>
-            )}
+          <Button className="flex-1 font-semibold" onClick={handleSave} disabled={saving} data-testid="button-save-contact">
+            {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : <><Save className="h-4 w-4 mr-2" />Save Contact</>}
           </Button>
         </div>
       </div>

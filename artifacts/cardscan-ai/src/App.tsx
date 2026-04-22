@@ -8,6 +8,8 @@ import Dashboard from "@/pages/Dashboard";
 import Scan from "@/pages/Scan";
 import Review from "@/pages/Review";
 import Contacts from "@/pages/Contacts";
+import ContactDetail from "@/pages/ContactDetail";
+import Events from "@/pages/Events";
 import NotFound from "@/pages/not-found";
 import type { AnalysisResult } from "@/lib/gemini";
 
@@ -28,6 +30,10 @@ function AppRoutes() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/contacts" component={Contacts} />
+        <Route path="/contacts/:id">
+          {(params) => <ContactDetail id={params?.id ?? ""} />}
+        </Route>
+        <Route path="/events" component={Events} />
         <Route path="/scan">
           {() => <Scan onAnalyzed={handleAnalyzed} />}
         </Route>

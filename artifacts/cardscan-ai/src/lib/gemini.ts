@@ -25,6 +25,11 @@ export interface AnalysisResult {
   geo: ExtractedGeoData;
 }
 
+export interface NoteAnalysis {
+  summary: string;
+  todoItems: string[];
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -41,6 +46,32 @@ function fileToBase64(file: File): Promise<string> {
 function safeStr(val: unknown): string {
   if (typeof val === "string" && val.trim() !== "") return val.trim();
   return "N/A";
+}
+
+async function callGemini(prompt: string, apiKey: string): Promise<string> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let errorMessage = `Gemini API error (${response.status})`;
+    try {
+      const errorJson = JSON.parse(errorText);
+      if (errorJson?.error?.message) errorMessage = errorJson.error.message;
+    } catch { /* ignore */ }
+    throw new Error(errorMessage);
+  }
+
+  const data = await response.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
 export async function analyzeBusinessCard(
@@ -82,28 +113,21 @@ Rules:
 - Do NOT leave any field out of the JSON
 - Return ONLY the JSON object, nothing else`;
 
-  const requestBody = {
-    contents: [
-      {
-        parts: [
-          { text: prompt },
-          {
-            inline_data: {
-              mime_type: mimeType,
-              data: base64Data,
-            },
-          },
-        ],
-      },
-    ],
-  };
-
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mimeType, data: base64Data } },
+            ],
+          },
+        ],
+      }),
     }
   );
 
@@ -112,25 +136,17 @@ Rules:
     let errorMessage = `Gemini API error (${response.status})`;
     try {
       const errorJson = JSON.parse(errorText);
-      if (errorJson?.error?.message) {
-        errorMessage = errorJson.error.message;
-      }
-    } catch {
-      // ignore parse errors
-    }
+      if (errorJson?.error?.message) errorMessage = errorJson.error.message;
+    } catch { /* ignore */ }
     throw new Error(errorMessage);
   }
 
   const data = await response.json();
-  const rawText: string =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const rawText: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
   let jsonStr = rawText.trim();
-
   const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) {
-    jsonStr = fenceMatch[1].trim();
-  }
+  if (fenceMatch) jsonStr = fenceMatch[1].trim();
 
   type RawParsed = Partial<ExtractedCard & ExtractedGeoData>;
   let parsed: RawParsed;
@@ -138,9 +154,7 @@ Rules:
     parsed = JSON.parse(jsonStr);
   } catch {
     const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("Could not parse AI response as JSON. Please try again.");
-    }
+    if (!jsonMatch) throw new Error("Could not parse AI response as JSON. Please try again.");
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch {
@@ -171,4 +185,56 @@ Rules:
   };
 
   return { card, geo };
+}
+
+export async function analyzeNote(
+  text: string,
+  apiKey: string
+): Promise<NoteAnalysis> {
+  if (!apiKey) {
+    throw new Error("No Gemini API key configured. Please add your API key in Settings.");
+  }
+  if (!text.trim()) {
+    throw new Error("Note text is empty.");
+  }
+
+  const prompt = `You are a networking CRM assistant. A user has recorded a note about a business contact.
+
+Note content:
+"${text}"
+
+Your tasks:
+1. Write a concise 2-3 sentence summary of this note.
+2. Extract any action items, follow-ups, or to-do tasks mentioned (explicit or implied).
+
+Return a single valid JSON object with NO markdown, NO code fences, NO extra text:
+{
+  "summary": "2-3 sentence summary of the note",
+  "todoItems": ["action item 1", "action item 2"]
+}
+
+Rules:
+- If there are no action items, return an empty array for todoItems
+- Keep summary concise and professional
+- Return ONLY the JSON object`;
+
+  const rawText = await callGemini(prompt, apiKey);
+
+  let jsonStr = rawText.trim();
+  const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) jsonStr = fenceMatch[1].trim();
+
+  let parsed: { summary?: string; todoItems?: string[] };
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Could not parse AI response.");
+    parsed = JSON.parse(jsonMatch[0]);
+  }
+
+  return {
+    summary: parsed.summary ?? "No summary available.",
+    todoItems: Array.isArray(parsed.todoItems) ? parsed.todoItems : [],
+  };
 }
