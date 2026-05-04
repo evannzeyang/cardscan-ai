@@ -12,6 +12,9 @@ import ContactDetail from "@/pages/ContactDetail";
 import Events from "@/pages/Events";
 import NotFound from "@/pages/not-found";
 import type { AnalysisResult } from "@/lib/gemini";
+import { useAuth } from "@workspace/replit-auth-web";
+import { Loader2, ScanLine } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const queryClient = new QueryClient();
 
@@ -52,12 +55,50 @@ function AppRoutes() {
   );
 }
 
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { isLoading, isAuthenticated, login } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="text-center max-w-sm">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-6">
+            <ScanLine className="h-8 w-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">CardScan AI</h1>
+          <p className="text-muted-foreground mb-8 text-sm leading-relaxed">
+            Your personal business card scanner. Scan cards, manage contacts, and track networking events — all in one place.
+          </p>
+          <Button className="w-full h-11 font-semibold text-base" onClick={login}>
+            Log in to get started
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <AppRoutes />
+          <AuthGate>
+            <AppRoutes />
+          </AuthGate>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

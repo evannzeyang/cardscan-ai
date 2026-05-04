@@ -4,18 +4,17 @@ import {
   ArrowLeft, Mail, Phone, Globe, Linkedin, MapPin,
   Mic, MicOff, FileText, Trash2, Sparkles, Loader2,
   CheckSquare, Square, ChevronDown, ChevronUp, PenLine,
-  CalendarDays, Upload, CheckCircle2, Pencil, Save, X,
+  CalendarDays, Pencil, Save, X, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
-  getContact, addNoteToContact, deleteNoteFromContact,
-  updateNoteOnContact, updateContact, markAsSynced,
-  type Contact, type Note,
-} from "@/lib/storage";
-import { getEvents, type CalendarEvent } from "@/lib/events-storage";
+  getContact, updateContact, getNotes, createNote, updateNote, deleteNote,
+  getEvents,
+  type ApiContact, type ApiNote, type ApiEvent,
+} from "@/lib/api";
 import { analyzeNote } from "@/lib/gemini";
 import { getApiKey } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
@@ -42,31 +41,8 @@ interface SpeechRecognitionEvent_ extends Event {
   results: SpeechRecognitionResultList;
 }
 
-function buildGeoFromContact(contact: Contact) {
-  if (contact.geoData) return contact.geoData;
-  return {
-    businessName: contact.company || "N/A",
-    businessAddress: contact.address || "N/A",
-    city: "N/A", province: "N/A",
-    fullCivicAddress: contact.address || "N/A",
-    latitude: "N/A", longitude: "N/A",
-  };
-}
-
-async function callSheetsAppend(geo: ReturnType<typeof buildGeoFromContact>) {
-  const response = await fetch("/api/sheets/append", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(geo),
-  });
-  if (!response.ok) {
-    const d = await response.json().catch(() => ({}));
-    throw new Error((d as { message?: string }).message ?? `HTTP ${response.status}`);
-  }
-}
-
 interface NoteCardProps {
-  note: Note;
+  note: ApiNote;
   contactId: string;
   onDeleted: () => void;
   onUpdated: () => void;
@@ -86,7 +62,7 @@ function NoteCard({ note, contactId, onDeleted, onUpdated }: NoteCardProps) {
     setAnalyzing(true);
     try {
       const result = await analyzeNote(note.text, apiKey);
-      updateNoteOnContact(contactId, note.id, {
+      await updateNote(contactId, note.id, {
         aiSummary: result.summary,
         todoItems: result.todoItems,
       });
@@ -96,6 +72,15 @@ function NoteCard({ note, contactId, onDeleted, onUpdated }: NoteCardProps) {
       toast({ title: "Analysis failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  async function handleDelete() {
+    try {
+      await deleteNote(contactId, note.id);
+      onDeleted();
+    } catch {
+      toast({ title: "Failed to delete note", variant: "destructive" });
     }
   }
 
@@ -132,7 +117,7 @@ function NoteCard({ note, contactId, onDeleted, onUpdated }: NoteCardProps) {
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-destructive hover:text-destructive"
-            onClick={() => { deleteNoteFromContact(contactId, note.id); onDeleted(); }}
+            onClick={handleDelete}
             data-testid={`button-delete-note-${note.id}`}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -152,7 +137,6 @@ function NoteCard({ note, contactId, onDeleted, onUpdated }: NoteCardProps) {
             AI Analysis
             {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </button>
-
           {expanded && (
             <div className="space-y-3 pt-2 border-t border-border">
               <div>
@@ -192,26 +176,38 @@ interface ContactDetailProps {
 
 export default function ContactDetail({ id }: ContactDetailProps) {
   const [, setLocation] = useLocation();
-  const [contact, setContact] = useState<Contact | null>(null);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [contact, setContact] = useState<ApiContact | null>(null);
+  const [notes, setNotes] = useState<ApiNote[]>([]);
+  const [events, setEvents] = useState<ApiEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   const [writtenNote, setWrittenNote] = useState("");
   const [recordState, setRecordState] = useState<RecordState>("idle");
   const [liveTranscript, setLiveTranscript] = useState("");
-  const [syncingSheet, setSyncingSheet] = useState(false);
 
   const [editMode, setEditMode] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", title: "", company: "", email: "", phone: "", address: "" });
+  const [editForm, setEditForm] = useState({ name: "", title: "", email: "", phone: "", address: "" });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recognitionRef = useRef<SpeechRecognitionObj | null>(null);
   const transcriptRef = useRef("");
 
-  const reload = useCallback(() => {
-    const c = getContact(id);
-    setContact(c ?? null);
-    setEvents(getEvents());
+  const reload = useCallback(async () => {
+    try {
+      const [c, n, e] = await Promise.all([
+        getContact(id),
+        getNotes(id),
+        getEvents(),
+      ]);
+      setContact(c);
+      setNotes(n);
+      setEvents(e);
+    } catch {
+      setContact(null);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -219,12 +215,22 @@ export default function ContactDetail({ id }: ContactDetailProps) {
   useEffect(() => {
     if (contact) {
       setEditForm({
-        name: contact.name, title: contact.title,
-        company: contact.company, email: contact.email,
-        phone: contact.phone, address: contact.address,
+        name: contact.name ?? "",
+        title: contact.title ?? "",
+        email: contact.email ?? "",
+        phone: contact.phone ?? "",
+        address: contact.address ?? "",
       });
     }
   }, [contact]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!contact) {
     return (
@@ -239,32 +245,26 @@ export default function ContactDetail({ id }: ContactDetailProps) {
 
   const linkedEvent = contact.eventId ? events.find((e) => e.id === contact.eventId) : null;
 
-  function handleSaveEdit() {
-    updateContact(id, editForm);
-    reload();
-    setEditMode(false);
-    toast({ title: "Contact updated" });
-  }
-
-  function handleSaveWrittenNote() {
-    if (!writtenNote.trim()) return;
-    addNoteToContact(id, { type: "written", text: writtenNote.trim() });
-    setWrittenNote("");
-    reload();
-    toast({ title: "Note saved" });
-  }
-
-  async function handleSyncSheet() {
-    setSyncingSheet(true);
+  async function handleSaveEdit() {
     try {
-      await callSheetsAppend(buildGeoFromContact(contact));
-      markAsSynced(id);
-      reload();
-      toast({ title: "Synced to Sheets!" });
-    } catch (err) {
-      toast({ title: "Sync failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setSyncingSheet(false);
+      await updateContact(id, editForm);
+      await reload();
+      setEditMode(false);
+      toast({ title: "Contact updated" });
+    } catch {
+      toast({ title: "Failed to update contact", variant: "destructive" });
+    }
+  }
+
+  async function handleSaveWrittenNote() {
+    if (!writtenNote.trim()) return;
+    try {
+      await createNote(id, { type: "written", text: writtenNote.trim() });
+      setWrittenNote("");
+      await reload();
+      toast({ title: "Note saved" });
+    } catch {
+      toast({ title: "Failed to save note", variant: "destructive" });
     }
   }
 
@@ -306,26 +306,29 @@ export default function ContactDetail({ id }: ContactDetailProps) {
     }
   }
 
-  function handleStopRecording() {
+  async function handleStopRecording() {
     setRecordState("processing");
 
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
-
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream?.getTracks().forEach((t) => t.stop());
       mediaRecorderRef.current = null;
     }
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const text = transcriptRef.current.trim() || liveTranscript.trim();
       if (text) {
-        addNoteToContact(id, { type: "voice", text });
-        reload();
-        toast({ title: "Voice note saved" });
+        try {
+          await createNote(id, { type: "voice", text });
+          await reload();
+          toast({ title: "Voice note saved" });
+        } catch {
+          toast({ title: "Failed to save voice note", variant: "destructive" });
+        }
       } else {
         toast({ title: "No speech detected", description: "Please type your note instead.", variant: "destructive" });
       }
@@ -335,26 +338,24 @@ export default function ContactDetail({ id }: ContactDetailProps) {
     }, 600);
   }
 
-  const notes = contact.notes ?? [];
-
   return (
     <div className="min-h-screen bg-background pb-12">
       <div className="max-w-lg mx-auto px-4 py-4">
-        {/* Back + actions */}
         <div className="flex items-center gap-3 mb-4">
           <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => setLocation("/contacts")}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold text-foreground truncate">{contact.name || "Unnamed Contact"}</h1>
-            <p className="text-sm text-muted-foreground truncate">{contact.title}{contact.title && contact.company ? " · " : ""}{contact.company}</p>
+            <p className="text-sm text-muted-foreground truncate">
+              {contact.title}{contact.title && contact.company?.businessName ? " · " : ""}{contact.company?.businessName}
+            </p>
           </div>
           <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => setEditMode(true)} data-testid="button-edit-contact">
             <Pencil className="h-4 w-4" />
           </Button>
         </div>
 
-        {/* Edit modal */}
         {editMode && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setEditMode(false)} />
@@ -367,7 +368,6 @@ export default function ContactDetail({ id }: ContactDetailProps) {
                 {([
                   { label: "Full Name", key: "name" as const },
                   { label: "Job Title", key: "title" as const },
-                  { label: "Company", key: "company" as const },
                   { label: "Email", key: "email" as const },
                   { label: "Phone", key: "phone" as const },
                   { label: "Address", key: "address" as const },
@@ -388,7 +388,6 @@ export default function ContactDetail({ id }: ContactDetailProps) {
           </div>
         )}
 
-        {/* Linked event */}
         {linkedEvent && (
           <div className="flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-xl px-4 py-2.5 mb-4">
             <CalendarDays className="h-4 w-4 text-primary shrink-0" />
@@ -401,8 +400,21 @@ export default function ContactDetail({ id }: ContactDetailProps) {
           </div>
         )}
 
-        {/* Contact info */}
-        <div className="bg-card border border-card-border rounded-2xl p-4 mb-4 shadow-sm space-y-2">
+        {contact.company && (
+          <div className="flex items-center gap-2 bg-muted/40 border border-border rounded-xl px-4 py-2.5 mb-4">
+            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">{contact.company.businessName}</p>
+              {(contact.company.city || contact.company.province) && (
+                <p className="text-xs text-muted-foreground">
+                  {[contact.company.city, contact.company.province].filter(Boolean).join(", ")}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="bg-card border border-card-border rounded-2xl p-4 mb-6 shadow-sm space-y-2">
           {contact.email && (
             <a href={`mailto:${contact.email}`} className="flex items-center gap-3 text-sm hover:bg-muted/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors">
               <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -440,31 +452,12 @@ export default function ContactDetail({ id }: ContactDetailProps) {
           )}
         </div>
 
-        {/* Sync to Sheets */}
-        <Button
-          variant={contact.syncedToSheets ? "outline" : "default"}
-          className="w-full mb-6"
-          onClick={handleSyncSheet}
-          disabled={syncingSheet || contact.syncedToSheets === true}
-          data-testid="button-sync-detail"
-        >
-          {syncingSheet ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Syncing...</>
-          ) : contact.syncedToSheets ? (
-            <><CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />Synced to Sheets</>
-          ) : (
-            <><Upload className="h-4 w-4 mr-2" />Sync to BCoC Sheets</>
-          )}
-        </Button>
-
-        {/* Notes section */}
         <div className="mb-4">
           <h2 className="text-base font-semibold text-foreground flex items-center gap-2 mb-3">
             <FileText className="h-4 w-4 text-primary" />
             Notes & Follow-ups
           </h2>
 
-          {/* Existing notes */}
           {notes.length > 0 && (
             <div className="space-y-3 mb-4">
               {notes.map((note) => (
@@ -479,7 +472,6 @@ export default function ContactDetail({ id }: ContactDetailProps) {
             </div>
           )}
 
-          {/* Voice note button — large for easy use */}
           <div className="mb-4">
             {recordState === "idle" && (
               <button
@@ -493,7 +485,6 @@ export default function ContactDetail({ id }: ContactDetailProps) {
                 <span className="text-sm font-semibold text-primary">Record Voice Note</span>
               </button>
             )}
-
             {recordState === "recording" && (
               <div className="rounded-2xl border-2 border-red-400 bg-red-50 dark:bg-red-950/20 p-4">
                 <div className="flex items-center gap-3 mb-3">
@@ -519,7 +510,6 @@ export default function ContactDetail({ id }: ContactDetailProps) {
                 )}
               </div>
             )}
-
             {recordState === "processing" && (
               <div className="w-full h-20 rounded-2xl bg-muted/40 flex items-center justify-center gap-3">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -528,7 +518,6 @@ export default function ContactDetail({ id }: ContactDetailProps) {
             )}
           </div>
 
-          {/* Written note */}
           <div>
             <Label className="text-sm font-medium mb-1.5 block">
               <PenLine className="h-3.5 w-3.5 inline mr-1.5" />

@@ -1,20 +1,16 @@
 import { useState, useEffect, useCallback } from "react";
-import { useLocation } from "wouter";
 import {
-  CalendarDays, Plus, Trash2, Clock, MapPin, Users,
-  ChevronDown, ChevronUp, Bell, X,
+  CalendarDays, Plus, Trash2, Clock, MapPin,
+  ChevronDown, ChevronUp, Bell, X, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  getEvents, saveEvent, deleteEvent,
-  getCountdown, REMINDER_LABELS,
-  type CalendarEvent, type ReminderFrequency,
-} from "@/lib/events-storage";
-import { getContacts } from "@/lib/storage";
+import { getEvents, createEvent, deleteEvent, type ApiEvent } from "@/lib/api";
+import { getCountdown, REMINDER_LABELS } from "@/lib/events-storage";
 import { useToast } from "@/hooks/use-toast";
 
+type ReminderFrequency = "none" | "15min" | "1hour" | "1day" | "1week";
 const REMINDER_OPTIONS: ReminderFrequency[] = ["none", "15min", "1hour", "1day", "1week"];
 
 function CountdownBadge({ dateTime }: { dateTime: string }) {
@@ -51,10 +47,11 @@ function CountdownBadge({ dateTime }: { dateTime: string }) {
 }
 
 export default function Events() {
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [events, setEvents] = useState<ApiEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [, setLocation] = useLocation();
+  const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
   const [title, setTitle] = useState("");
@@ -62,37 +59,68 @@ export default function Events() {
   const [dateTime, setDateTime] = useState("");
   const [reminder, setReminder] = useState<ReminderFrequency>("1hour");
 
-  const allContacts = getContacts();
-  const reload = useCallback(() => setEvents(getEvents()), []);
+  const reload = useCallback(async () => {
+    try {
+      const data = await getEvents();
+      setEvents(data);
+    } catch {
+      toast({ title: "Failed to load events", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => { reload(); }, [reload]);
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!title.trim() || !dateTime) {
       toast({ title: "Please enter a title and date/time", variant: "destructive" });
       return;
     }
-    saveEvent({ title: title.trim(), location: location_.trim(), dateTime, reminderFrequency: reminder });
-    setTitle(""); setLocation_(""); setDateTime(""); setReminder("1hour");
-    setShowForm(false);
-    reload();
-    toast({ title: "Event added!" });
+    setSaving(true);
+    try {
+      await createEvent({
+        title: title.trim(),
+        location: location_.trim() || undefined,
+        dateTime: new Date(dateTime).toISOString(),
+        reminderFrequency: reminder,
+      });
+      setTitle(""); setLocation_(""); setDateTime(""); setReminder("1hour");
+      setShowForm(false);
+      await reload();
+      toast({ title: "Event added!" });
+    } catch (err) {
+      toast({ title: "Failed to save event", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleDelete(id: string) {
-    deleteEvent(id);
-    reload();
-    toast({ title: "Event deleted" });
+  async function handleDelete(id: string) {
+    try {
+      await deleteEvent(id);
+      await reload();
+      toast({ title: "Event deleted" });
+    } catch {
+      toast({ title: "Failed to delete event", variant: "destructive" });
+    }
   }
 
   const sortedEvents = [...events].sort(
     (a, b) => new Date(a.dateTime).getTime() - new Date(b.dateTime).getTime()
   );
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto px-4 py-6">
-        {/* Header bar */}
         <div className="flex items-center gap-3 mb-6">
           <h1 className="text-xl font-semibold text-foreground flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-primary" />
@@ -108,7 +136,6 @@ export default function Events() {
           </Button>
         </div>
 
-        {/* Add form */}
         {showForm && (
           <div className="bg-card border border-card-border rounded-2xl p-5 mb-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
@@ -146,14 +173,13 @@ export default function Events() {
                   ))}
                 </select>
               </div>
-              <Button className="w-full font-semibold" onClick={handleAdd} data-testid="button-save-event">
-                Save Event
+              <Button className="w-full font-semibold" onClick={handleAdd} disabled={saving} data-testid="button-save-event">
+                {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : "Save Event"}
               </Button>
             </div>
           </div>
         )}
 
-        {/* Empty state */}
         {sortedEvents.length === 0 && !showForm && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
@@ -170,12 +196,11 @@ export default function Events() {
           </div>
         )}
 
-        {/* Event list */}
         <div className="space-y-3">
           {sortedEvents.map((event) => {
-            const linked = allContacts.filter((c) => c.eventId === event.id);
             const isExpanded = expandedId === event.id;
             const dt = new Date(event.dateTime);
+            const freq = event.reminderFrequency as ReminderFrequency | null;
 
             return (
               <div
@@ -187,17 +212,9 @@ export default function Events() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <h3 className="font-semibold text-foreground text-base mb-1">{event.title}</h3>
-
                       <div className="flex flex-wrap gap-2 mb-2">
                         <CountdownBadge dateTime={event.dateTime} />
-                        {linked.length > 0 && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-                            <Users className="h-3 w-3" />
-                            {linked.length} contact{linked.length !== 1 ? "s" : ""}
-                          </span>
-                        )}
                       </div>
-
                       <div className="text-sm text-muted-foreground space-y-0.5">
                         <div className="flex items-center gap-1.5">
                           <Clock className="h-3.5 w-3.5 shrink-0" />
@@ -211,27 +228,15 @@ export default function Events() {
                             {event.location}
                           </div>
                         )}
-                        {event.reminderFrequency !== "none" && (
+                        {freq && freq !== "none" && REMINDER_LABELS[freq] && (
                           <div className="flex items-center gap-1.5">
                             <Bell className="h-3.5 w-3.5 shrink-0" />
-                            {REMINDER_LABELS[event.reminderFrequency]}
+                            {REMINDER_LABELS[freq]}
                           </div>
                         )}
                       </div>
                     </div>
-
                     <div className="flex items-center gap-1 shrink-0">
-                      {linked.length > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => setExpandedId(isExpanded ? null : event.id)}
-                          data-testid={`button-expand-event-${event.id}`}
-                        >
-                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        </Button>
-                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -244,37 +249,6 @@ export default function Events() {
                     </div>
                   </div>
                 </div>
-
-                {/* Contacts met at this event */}
-                {isExpanded && linked.length > 0 && (
-                  <div className="border-t border-border px-4 py-3 bg-muted/30">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Contacts met at this event
-                    </p>
-                    <div className="space-y-2">
-                      {linked.map((contact) => (
-                        <button
-                          key={contact.id}
-                          className="w-full flex items-center gap-3 text-left hover:bg-muted/50 rounded-lg px-2 py-1.5 transition-colors"
-                          onClick={() => setLocation(`/contacts/${contact.id}`)}
-                          data-testid={`button-event-contact-${contact.id}`}
-                        >
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                            <span className="text-xs font-bold text-primary">
-                              {(contact.name || "?").charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-foreground">{contact.name || "—"}</p>
-                            <p className="text-xs text-muted-foreground truncate">
-                              {contact.title}{contact.title && contact.company ? " · " : ""}{contact.company}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}

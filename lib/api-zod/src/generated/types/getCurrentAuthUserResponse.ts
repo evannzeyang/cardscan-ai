@@ -5,7 +5,8 @@
  * CardScan AI API specification
  * OpenAPI spec version: 0.2.0
  */
+import type { AuthUser } from "./authUser";
 
-export interface HealthStatus {
-  status: string;
+export interface GetCurrentAuthUserResponse {
+  user: AuthUser | null;
 }

@@ -2,23 +2,22 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 0.2.0
+  description: CardScan AI API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
-  - name: sheets
-    description: Google Sheets operations
+  - name: auth
+    description: Authentication operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -26,30 +25,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
-  /sheets/append:
+  /auth/user:
+    get:
+      operationId: getCurrentAuthUser
+      tags: [auth]
+      summary: Get current authenticated user
+      responses:
+        "200":
+          description: Current auth state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetCurrentAuthUserResponse"
+  /mobile-auth/token-exchange:
     post:
-      operationId: appendToSheet
-      tags: [sheets]
-      summary: Append a row to the BCoC Members Google Sheet
+      operationId: exchangeMobileAuthorizationCode
+      tags: [auth]
+      summary: Exchange mobile authorization code for session token
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AppendSheetRowBody"
+              $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeBody"
       responses:
         "200":
-          description: Row appended successfully
+          description: Session token
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AppendSheetRowResponse"
-        "500":
-          description: Failed to append row
+                $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeResponse"
+  /mobile-auth/logout:
+    post:
+      operationId: logoutMobileSession
+      tags: [auth]
+      summary: Log out mobile session
+      responses:
+        "200":
+          description: Logged out
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AppendSheetRowResponse"
+                $ref: "#/components/schemas/LogoutMobileSessionResponse"
 components:
   schemas:
     HealthStatus:
@@ -59,37 +76,64 @@ components:
           type: string
       required:
         - status
-    AppendSheetRowBody:
+    AuthUser:
       type: object
       properties:
-        businessName:
+        id:
           type: string
-        businessAddress:
+        email:
           type: string
-        city:
+          nullable: true
+        firstName:
           type: string
-        province:
+          nullable: true
+        lastName:
           type: string
-        fullCivicAddress:
+          nullable: true
+        profileImageUrl:
           type: string
-        latitude:
+          nullable: true
+      required:
+        - id
+    GetCurrentAuthUserResponse:
+      type: object
+      properties:
+        user:
+          oneOf:
+            - $ref: "#/components/schemas/AuthUser"
+            - type: "null"
+      required:
+        - user
+    ExchangeMobileAuthorizationCodeBody:
+      type: object
+      properties:
+        code:
           type: string
-        longitude:
+        code_verifier:
+          type: string
+        redirect_uri:
+          type: string
+        state:
+          type: string
+        nonce:
+          type: string
+          nullable: true
+      required:
+        - code
+        - code_verifier
+        - redirect_uri
+        - state
+    ExchangeMobileAuthorizationCodeResponse:
+      type: object
+      properties:
+        token:
           type: string
       required:
-        - businessName
-        - businessAddress
-        - city
-        - province
-        - fullCivicAddress
-        - latitude
-        - longitude
-    AppendSheetRowResponse:
+        - token
+    LogoutMobileSessionResponse:
       type: object
       properties:
         success:
           type: boolean
-        message:
-          type: string
       required:
         - success

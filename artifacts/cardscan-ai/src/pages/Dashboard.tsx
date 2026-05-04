@@ -40,7 +40,7 @@ export default function Dashboard() {
             data-testid="button-view-contacts"
           >
             <TableProperties className="h-5 w-5 mr-2" />
-            View & Sync Contacts
+            View Contacts
           </Button>
         </div>
       </div>

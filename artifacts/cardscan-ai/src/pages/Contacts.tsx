@@ -1,57 +1,58 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
-  Scan, Download, Trash2, Upload, CheckCircle2,
-  Loader2, Pencil, X, Save, ExternalLink,
+  Scan, Download, Trash2, Loader2, Pencil, X, Save, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  getContacts, deleteContact, updateContact,
-  markAsSynced, exportContactsCSV,
-  type Contact, type GeoData,
-} from "@/lib/storage";
-import { getEvents } from "@/lib/events-storage";
+  getContacts, deleteContact, updateContact, getEvents,
+  type ApiContact, type ApiEvent,
+} from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
-function buildGeoFromContact(contact: Contact): GeoData {
-  if (contact.geoData) return contact.geoData;
-  return {
-    businessName: contact.company || "N/A",
-    businessAddress: contact.address || "N/A",
-    city: "N/A", province: "N/A",
-    fullCivicAddress: contact.address || "N/A",
-    latitude: "N/A", longitude: "N/A",
-  };
-}
-
-async function callSheetsAppend(geo: GeoData): Promise<void> {
-  const response = await fetch("/api/sheets/append", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(geo),
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error((data as { message?: string }).message ?? `HTTP ${response.status}`);
-  }
+function exportContactsCSV(contacts: ApiContact[]): void {
+  const headers = [
+    "Name", "Title", "Company", "Email", "Phone",
+    "Website", "LinkedIn", "Address", "Company Summary", "Scanned At",
+  ];
+  const rows = contacts.map((c) => [
+    c.name ?? "", c.title ?? "",
+    c.company?.businessName ?? "", c.email ?? "", c.phone ?? "",
+    c.website ?? "", c.linkedin ?? "", c.address ?? "", c.companySummary ?? "",
+    c.scannedAt ? new Date(c.scannedAt).toLocaleString() : "",
+  ]);
+  const csv = [headers, ...rows]
+    .map((row) => row.map((cell) => `"${(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cardscan_contacts_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 interface EditModalProps {
-  contact: Contact;
-  onSave: (updates: Partial<Contact>) => void;
+  contact: ApiContact;
+  events: ApiEvent[];
+  onSave: (updates: {
+    name?: string; title?: string; email?: string; phone?: string;
+    address?: string; companySummary?: string; eventId?: string;
+  }) => void;
   onClose: () => void;
 }
 
-function EditModal({ contact, onSave, onClose }: EditModalProps) {
-  const [name, setName] = useState(contact.name);
-  const [company, setCompany] = useState(contact.company);
-  const [address, setAddress] = useState(contact.address);
-  const [title, setTitle] = useState(contact.title);
-  const [email, setEmail] = useState(contact.email);
-  const [phone, setPhone] = useState(contact.phone);
-  const events = getEvents();
+function EditModal({ contact, events, onSave, onClose }: EditModalProps) {
+  const [name, setName] = useState(contact.name ?? "");
+  const [title, setTitle] = useState(contact.title ?? "");
+  const [email, setEmail] = useState(contact.email ?? "");
+  const [phone, setPhone] = useState(contact.phone ?? "");
+  const [address, setAddress] = useState(contact.address ?? "");
   const [eventId, setEventId] = useState(contact.eventId ?? "");
 
   return (
@@ -66,7 +67,6 @@ function EditModal({ contact, onSave, onClose }: EditModalProps) {
           {([
             { label: "Full Name", value: name, set: setName },
             { label: "Job Title", value: title, set: setTitle },
-            { label: "Company", value: company, set: setCompany },
             { label: "Email", value: email, set: setEmail },
             { label: "Phone", value: phone, set: setPhone },
             { label: "Address", value: address, set: setAddress },
@@ -96,7 +96,7 @@ function EditModal({ contact, onSave, onClose }: EditModalProps) {
           <Button variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
           <Button
             className="flex-1 font-semibold"
-            onClick={() => onSave({ name, company, address, title, email, phone, eventId: eventId || undefined })}
+            onClick={() => onSave({ name, title, email, phone, address, eventId: eventId || undefined })}
             data-testid="button-save-edit"
           >
             <Save className="h-4 w-4 mr-2" />Save Changes
@@ -108,19 +108,35 @@ function EditModal({ contact, onSave, onClose }: EditModalProps) {
 }
 
 export default function Contacts() {
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set());
-  const [editingContact, setEditingContact] = useState<Contact | null>(null);
+  const [contacts, setContacts] = useState<ApiContact[]>([]);
+  const [events, setEvents] = useState<ApiEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingContact, setEditingContact] = useState<ApiContact | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  const reload = useCallback(() => setContacts(getContacts()), []);
+  const reload = useCallback(async () => {
+    try {
+      const [c, e] = await Promise.all([getContacts(), getEvents()]);
+      setContacts(c);
+      setEvents(e);
+    } catch {
+      toast({ title: "Failed to load contacts", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
   useEffect(() => { reload(); }, [reload]);
 
-  function handleDelete(id: string) {
-    deleteContact(id);
-    reload();
-    toast({ title: "Contact deleted" });
+  async function handleDelete(id: string) {
+    try {
+      await deleteContact(id);
+      await reload();
+      toast({ title: "Contact deleted" });
+    } catch {
+      toast({ title: "Failed to delete contact", variant: "destructive" });
+    }
   }
 
   function handleExport() {
@@ -132,30 +148,25 @@ export default function Contacts() {
     toast({ title: "CSV exported successfully" });
   }
 
-  function handleEditSave(updates: Partial<Contact>) {
+  async function handleEditSave(updates: Parameters<EditModalProps["onSave"]>[0]) {
     if (!editingContact) return;
-    updateContact(editingContact.id, updates);
-    reload();
-    setEditingContact(null);
-    toast({ title: "Contact updated" });
-  }
-
-  async function handleSync(contact: Contact) {
-    setSyncingIds((prev) => new Set(prev).add(contact.id));
     try {
-      await callSheetsAppend(buildGeoFromContact(contact));
-      markAsSynced(contact.id);
-      reload();
-      toast({ title: "Synced!", description: `${contact.name || "Contact"} added to BCoC Members.` });
-    } catch (err) {
-      toast({ title: "Sync failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setSyncingIds((prev) => { const n = new Set(prev); n.delete(contact.id); return n; });
+      await updateContact(editingContact.id, updates);
+      await reload();
+      setEditingContact(null);
+      toast({ title: "Contact updated" });
+    } catch {
+      toast({ title: "Failed to update contact", variant: "destructive" });
     }
   }
 
-  const synced = contacts.filter((c) => c.syncedToSheets).length;
-  const pending = contacts.length - synced;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -169,9 +180,7 @@ export default function Contacts() {
               <Download className="h-4 w-4" />Export CSV
             </Button>
             <div className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
-              <span>{contacts.length} total</span>
-              {synced > 0 && <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><CheckCircle2 className="h-3.5 w-3.5" />{synced} synced</span>}
-              {pending > 0 && <span className="text-amber-600 dark:text-amber-400">{pending} pending</span>}
+              <span>{contacts.length} contact{contacts.length !== 1 ? "s" : ""}</span>
             </div>
           </div>
 
@@ -190,51 +199,29 @@ export default function Contacts() {
 
           {contacts.length > 0 && (
             <>
-              {/* Mobile cards */}
               <div className="block md:hidden space-y-3">
-                {contacts.map((contact) => {
-                  const isSyncing = syncingIds.has(contact.id);
-                  return (
-                    <div key={contact.id} className="bg-card border border-card-border rounded-xl p-4 shadow-sm" data-testid={`card-contact-${contact.id}`}>
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                            <p className="font-semibold text-foreground truncate">{contact.name || "—"}</p>
-                            {contact.syncedToSheets ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
-                                <CheckCircle2 className="h-3 w-3" />Synced
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Pending</span>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground truncate">
-                            {contact.title}{contact.title && contact.company ? " · " : ""}{contact.company}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLocation(`/contacts/${contact.id}`)} title="View details">
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingContact(contact)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(contact.id)}><Trash2 className="h-4 w-4" /></Button>
-                        </div>
+                {contacts.map((contact) => (
+                  <div key={contact.id} className="bg-card border border-card-border rounded-xl p-4 shadow-sm" data-testid={`card-contact-${contact.id}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-foreground truncate">{contact.name || "—"}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {contact.title}{contact.title && contact.company?.businessName ? " · " : ""}{contact.company?.businessName}
+                        </p>
+                        {contact.email && <p className="text-xs text-muted-foreground truncate mt-1">{contact.email}</p>}
                       </div>
-                      <Button
-                        size="sm" variant={contact.syncedToSheets ? "outline" : "default"}
-                        className="w-full" onClick={() => handleSync(contact)}
-                        disabled={isSyncing || contact.syncedToSheets === true}
-                      >
-                        {isSyncing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Syncing...</>
-                          : contact.syncedToSheets ? <><CheckCircle2 className="h-3.5 w-3.5 mr-1.5 text-green-600" />Synced</>
-                          : <><Upload className="h-3.5 w-3.5 mr-1.5" />Sync to Sheets</>}
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLocation(`/contacts/${contact.id}`)} title="View details">
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingContact(contact)}><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(contact.id)}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
 
-              {/* Desktop table */}
               <div className="hidden md:block overflow-x-auto rounded-xl border border-border shadow-sm">
                 <table className="w-full text-sm">
                   <thead>
@@ -244,59 +231,36 @@ export default function Contacts() {
                       <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap">Company</th>
                       <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap">Email</th>
                       <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap">Phone</th>
-                      <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap">Status</th>
                       <th className="px-4 py-3 font-semibold text-muted-foreground whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {contacts.map((contact, idx) => {
-                      const isSyncing = syncingIds.has(contact.id);
-                      return (
-                        <tr key={contact.id} className={`hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/10"}`} data-testid={`row-contact-${contact.id}`}>
-                          <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">{contact.name || "—"}</td>
-                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{contact.title || "—"}</td>
-                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{contact.company || "—"}</td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            {contact.email ? <a href={`mailto:${contact.email}`} className="text-primary hover:underline">{contact.email}</a> : "—"}
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                            {contact.phone ? <a href={`tel:${contact.phone}`} className="hover:underline">{contact.phone}</a> : "—"}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            {contact.syncedToSheets ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
-                                <CheckCircle2 className="h-3 w-3" />Sent to Sheets
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">Pending</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm" variant={contact.syncedToSheets ? "outline" : "default"}
-                                className="h-8 px-3 text-xs" onClick={() => handleSync(contact)}
-                                disabled={isSyncing || contact.syncedToSheets === true}
-                                data-testid={`button-sync-${contact.id}`}
-                              >
-                                {isSyncing ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Syncing</>
-                                  : contact.syncedToSheets ? <><CheckCircle2 className="h-3 w-3 mr-1 text-green-600" />Synced</>
-                                  : <><Upload className="h-3 w-3 mr-1" />Sync to Sheets</>}
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLocation(`/contacts/${contact.id}`)} title="View details" data-testid={`button-detail-${contact.id}`}>
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingContact(contact)} data-testid={`button-edit-${contact.id}`} title="Edit">
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(contact.id)} data-testid={`button-delete-${contact.id}`} title="Delete">
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {contacts.map((contact, idx) => (
+                      <tr key={contact.id} className={`hover:bg-muted/30 transition-colors ${idx % 2 === 0 ? "" : "bg-muted/10"}`} data-testid={`row-contact-${contact.id}`}>
+                        <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">{contact.name || "—"}</td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{contact.title || "—"}</td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{contact.company?.businessName || "—"}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          {contact.email ? <a href={`mailto:${contact.email}`} className="text-primary hover:underline">{contact.email}</a> : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                          {contact.phone ? <a href={`tel:${contact.phone}`} className="hover:underline">{contact.phone}</a> : "—"}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setLocation(`/contacts/${contact.id}`)} title="View details" data-testid={`button-detail-${contact.id}`}>
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingContact(contact)} data-testid={`button-edit-${contact.id}`} title="Edit">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(contact.id)} data-testid={`button-delete-${contact.id}`} title="Delete">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -306,7 +270,12 @@ export default function Contacts() {
       </div>
 
       {editingContact && (
-        <EditModal contact={editingContact} onSave={handleEditSave} onClose={() => setEditingContact(null)} />
+        <EditModal
+          contact={editingContact}
+          events={events}
+          onSave={handleEditSave}
+          onClose={() => setEditingContact(null)}
+        />
       )}
     </>
   );

@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Save, RotateCcw, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { Save, RotateCcw, AlertTriangle, Loader2, Building2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { saveContact, type Contact } from "@/lib/storage";
-import { getEvents } from "@/lib/events-storage";
 import { useToast } from "@/hooks/use-toast";
 import type { ExtractedCard, ExtractedGeoData } from "@/lib/gemini";
+import {
+  getEvents, createContact, searchCompanies, createCompany,
+  type ApiEvent, type ApiCompany,
+} from "@/lib/api";
 
 interface ReviewPageProps {
   extractedData: ExtractedCard | null;
@@ -16,23 +18,14 @@ interface ReviewPageProps {
   imageUrl: string;
 }
 
-async function appendToSheet(geo: ExtractedGeoData): Promise<void> {
-  const response = await fetch("/api/sheets/append", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(geo),
-  });
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error((data as { message?: string }).message ?? `HTTP ${response.status}`);
-  }
-}
-
 export default function Review({ extractedData, geoData, imageUrl }: ReviewPageProps) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
-  const events = getEvents();
+  const [events, setEvents] = useState<ApiEvent[]>([]);
+  const [selectedEventId, setSelectedEventId] = useState<string>("");
+  const [matchedCompany, setMatchedCompany] = useState<ApiCompany | null>(null);
+  const [companySearchDone, setCompanySearchDone] = useState(false);
 
   const [form, setForm] = useState<ExtractedCard>(
     extractedData ?? {
@@ -40,7 +33,27 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
       phone: "", website: "", linkedin: "", address: "", companySummary: "",
     }
   );
-  const [selectedEventId, setSelectedEventId] = useState<string>("");
+
+  useEffect(() => {
+    getEvents().then(setEvents).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const name = form.company?.trim();
+    if (!name || companySearchDone) return;
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchCompanies(name);
+        if (results.length > 0) {
+          setMatchedCompany(results[0]);
+        }
+      } catch {
+      } finally {
+        setCompanySearchDone(true);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [form.company, companySearchDone]);
 
   if (!extractedData) {
     return (
@@ -55,49 +68,65 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
 
   function handleChange(field: keyof ExtractedCard, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
+    if (field === "company") {
+      setCompanySearchDone(false);
+      setMatchedCompany(null);
+    }
   }
 
   async function handleSave() {
     setSaving(true);
+    try {
+      let companyId: string | undefined;
 
-    const contactData: Omit<Contact, "id" | "scannedAt" | "syncedToSheets"> = {
-      name: form.name, title: form.title, company: form.company,
-      email: form.email, phone: form.phone, website: form.website,
-      linkedin: form.linkedin, address: form.address,
-      companySummary: form.companySummary,
-      geoData: geoData ?? undefined,
-      eventId: selectedEventId || undefined,
-      notes: [],
-    };
-
-    saveContact(contactData);
-
-    if (geoData) {
-      try {
-        await appendToSheet(geoData);
-        toast({
-          title: "Contact saved!",
-          description: (
-            <span className="flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-              {form.name || "Contact"} saved and added to BCoC Members sheet.
-            </span>
-          ),
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        toast({
-          title: "Contact saved",
-          description: `Saved locally. Google Sheet update failed: ${msg}`,
-          variant: "destructive",
-        });
+      if (form.company?.trim()) {
+        if (matchedCompany) {
+          companyId = matchedCompany.id;
+        } else {
+          const company = await createCompany({
+            businessName: form.company.trim(),
+            businessAddress: geoData?.businessAddress,
+            city: geoData?.city,
+            province: geoData?.province,
+            fullCivicAddress: geoData?.fullCivicAddress,
+            latitude: geoData?.latitude,
+            longitude: geoData?.longitude,
+            website: form.website || undefined,
+          });
+          companyId = company.id;
+        }
       }
-    } else {
-      toast({ title: "Contact saved!", description: `${form.name || "Contact"} has been saved.` });
-    }
 
-    setSaving(false);
-    setLocation("/contacts");
+      await createContact({
+        companyId,
+        name: form.name || undefined,
+        title: form.title || undefined,
+        email: form.email || undefined,
+        phone: form.phone || undefined,
+        website: form.website || undefined,
+        linkedin: form.linkedin || undefined,
+        address: form.address || geoData?.fullCivicAddress || undefined,
+        companySummary: form.companySummary || undefined,
+        eventId: selectedEventId || undefined,
+      });
+
+      toast({
+        title: "Contact saved!",
+        description: matchedCompany
+          ? `Linked to existing company: ${matchedCompany.businessName}`
+          : `${form.name || "Contact"} saved to your contacts.`,
+      });
+
+      setLocation("/contacts");
+    } catch (err) {
+      toast({
+        title: "Save failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   const fields: Array<{ key: keyof ExtractedCard; label: string; type?: string }> = [
@@ -130,6 +159,20 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
           <p className="text-sm text-amber-700 dark:text-amber-300">AI results may not be 100% accurate. Please review before saving.</p>
         </div>
 
+        {matchedCompany && (
+          <div className="flex items-start gap-3 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50 p-4 mb-6">
+            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-green-700 dark:text-green-300">Company already in directory</p>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                <Building2 className="h-3 w-3 inline mr-1" />
+                {matchedCompany.businessName}
+                {matchedCompany.city ? ` · ${matchedCompany.city}` : ""}
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4 mb-6">
           {fields.map(({ key, label, type }) => (
             <div key={key}>
@@ -151,7 +194,6 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
             />
           </div>
 
-          {/* Event link */}
           {events.length > 0 && (
             <div>
               <Label htmlFor="field-event" className="text-sm font-medium text-foreground mb-1.5 block">Link to Event (optional)</Label>
@@ -175,7 +217,7 @@ export default function Review({ extractedData, geoData, imageUrl }: ReviewPageP
 
         {geoData && (
           <div className="rounded-xl border border-border bg-muted/30 p-4 mb-6 text-xs text-muted-foreground space-y-1">
-            <p className="font-medium text-foreground text-sm mb-2">Google Sheet data (auto-filled)</p>
+            <p className="font-medium text-foreground text-sm mb-2">Location data</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
               <span className="font-medium">City:</span><span>{geoData.city}</span>
               <span className="font-medium">Province:</span><span>{geoData.province}</span>
