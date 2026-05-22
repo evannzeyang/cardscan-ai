@@ -221,3 +221,47 @@ export async function deleteNote(contactId: string, noteId: string): Promise<voi
     method: "DELETE",
   });
 }
+
+export async function getGeminiKeyStatus(): Promise<{ hasKey: boolean }> {
+  return apiFetch<{ hasKey: boolean }>("/api/user/gemini-key/status");
+}
+
+export async function setGeminiKey(key: string): Promise<void> {
+  await apiFetch("/api/user/gemini-key", {
+    method: "PUT",
+    body: JSON.stringify({ key }),
+  });
+}
+
+export async function deleteGeminiKey(): Promise<void> {
+  await apiFetch("/api/user/gemini-key", { method: "DELETE" });
+}
+
+export interface ScanCardResult {
+  card: {
+    name: string; title: string; company: string; email: string;
+    phone: string; website: string; linkedin: string; address: string;
+    companySummary: string;
+  };
+  geo: {
+    businessName: string; businessAddress: string; city: string;
+    province: string; fullCivicAddress: string; latitude: string; longitude: string;
+  };
+}
+
+export async function scanCard(imageBase64: string, mimeType: string): Promise<ScanCardResult> {
+  return apiFetch<ScanCardResult>("/api/scan/card", {
+    method: "POST",
+    body: JSON.stringify({ imageBase64, mimeType }),
+  });
+}
+
+export async function analyzeNoteServer(
+  contactId: string,
+  noteId: string,
+): Promise<{ summary: string; todoItems: string[] }> {
+  return apiFetch<{ summary: string; todoItems: string[] }>(
+    `/api/user/contacts/${contactId}/notes/${noteId}/analyze`,
+    { method: "POST" },
+  );
+}

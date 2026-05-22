@@ -5,6 +5,8 @@ import companiesRouter from "./companies";
 import userContactsRouter from "./user-contacts";
 import userEventsRouter from "./user-events";
 import userNotesRouter from "./user-notes";
+import geminiKeyRouter from "./gemini-key";
+import scanRouter from "./scan";
 
 const router: IRouter = Router();
 
@@ -14,5 +16,7 @@ router.use(companiesRouter);
 router.use(userContactsRouter);
 router.use(userEventsRouter);
 router.use(userNotesRouter);
+router.use(geminiKeyRouter);
+router.use(scanRouter);
 
 export default router;

@@ -12,11 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
   getContact, updateContact, getNotes, createNote, updateNote, deleteNote,
-  getEvents,
+  getEvents, analyzeNoteServer,
   type ApiContact, type ApiNote, type ApiEvent,
 } from "@/lib/api";
-import { analyzeNote } from "@/lib/gemini";
-import { getApiKey } from "@/lib/storage";
 import { useToast } from "@/hooks/use-toast";
 
 type RecordState = "idle" | "recording" | "processing";
@@ -54,22 +52,18 @@ function NoteCard({ note, contactId, onDeleted, onUpdated }: NoteCardProps) {
   const { toast } = useToast();
 
   async function handleAnalyze() {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      toast({ title: "No API key", description: "Add your Gemini API key in Settings.", variant: "destructive" });
-      return;
-    }
     setAnalyzing(true);
     try {
-      const result = await analyzeNote(note.text, apiKey);
-      await updateNote(contactId, note.id, {
-        aiSummary: result.summary,
-        todoItems: result.todoItems,
-      });
+      await analyzeNoteServer(contactId, note.id);
       onUpdated();
       toast({ title: "AI analysis complete!" });
     } catch (err) {
-      toast({ title: "Analysis failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      toast({
+        title: msg.includes("Gemini API Key") || msg.includes("Settings") ? "No API key configured" : "Analysis failed",
+        description: msg,
+        variant: "destructive",
+      });
     } finally {
       setAnalyzing(false);
     }

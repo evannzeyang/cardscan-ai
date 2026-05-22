@@ -1,23 +1,64 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Settings, X, Eye, EyeOff, CheckCircle, TableProperties, Scan, CalendarDays } from "lucide-react";
+import {
+  Settings, X, Eye, EyeOff, CheckCircle, TableProperties, Scan,
+  CalendarDays, Trash2, LogOut, User, Loader2, KeyRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getApiKey, saveApiKey } from "@/lib/storage";
+import { useAuth } from "@workspace/replit-auth-web";
+import { getGeminiKeyStatus, setGeminiKey, deleteGeminiKey } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Header() {
   const [location, setLocation] = useLocation();
   const [showSettings, setShowSettings] = useState(false);
-  const [apiKey, setApiKey] = useState(getApiKey);
+  const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [hasKey, setHasKey] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
+  const { user, logout } = useAuth();
 
-  function handleSaveKey() {
-    saveApiKey(apiKey.trim());
-    toast({ title: "API key saved" });
-    setShowSettings(false);
+  useEffect(() => {
+    if (!showSettings) return;
+    setLoadingStatus(true);
+    getGeminiKeyStatus()
+      .then((s) => setHasKey(s.hasKey))
+      .catch(() => {})
+      .finally(() => setLoadingStatus(false));
+  }, [showSettings]);
+
+  async function handleSaveKey() {
+    if (!apiKey.trim()) return;
+    setSaving(true);
+    try {
+      await setGeminiKey(apiKey.trim());
+      setHasKey(true);
+      setApiKey("");
+      toast({ title: "API key saved securely" });
+    } catch {
+      toast({ title: "Failed to save API key", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteKey() {
+    setDeleting(true);
+    try {
+      await deleteGeminiKey();
+      setHasKey(false);
+      setApiKey("");
+      toast({ title: "API key removed" });
+    } catch {
+      toast({ title: "Failed to remove API key", variant: "destructive" });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const navLinks = [
@@ -26,11 +67,14 @@ export default function Header() {
     { path: "/events", label: "Events", icon: CalendarDays },
   ];
 
+  const displayName = user?.firstName
+    ? user.firstName
+    : user?.email?.split("@")[0] ?? "Account";
+
   return (
     <>
       <header className="sticky top-0 z-40 bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-3">
-          {/* Logo */}
           <button
             onClick={() => setLocation("/")}
             className="flex items-center gap-2.5 hover:opacity-80 transition-opacity shrink-0"
@@ -45,7 +89,6 @@ export default function Header() {
             <span className="text-base font-bold text-foreground tracking-tight hidden sm:block">CardScan AI</span>
           </button>
 
-          {/* Nav */}
           <nav className="flex items-center gap-0.5 ml-1">
             {navLinks.map(({ path, label, icon: Icon }) => {
               const active = location === path || (path === "/contacts" && location.startsWith("/contacts/"));
@@ -67,15 +110,36 @@ export default function Header() {
             })}
           </nav>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1.5">
+            {user && (
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground mr-1 hidden sm:flex">
+                {user.profileImageUrl ? (
+                  <img src={user.profileImageUrl} alt={displayName} className="w-6 h-6 rounded-full object-cover" />
+                ) : (
+                  <User className="h-4 w-4" />
+                )}
+                <span className="font-medium text-foreground">{displayName}</span>
+              </div>
+            )}
             <Button
               variant="ghost"
               size="icon"
               className="h-9 w-9"
               onClick={() => setShowSettings(true)}
+              title="Settings"
               data-testid="button-settings"
             >
               <Settings className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 text-muted-foreground hover:text-foreground"
+              onClick={logout}
+              title="Log out"
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </div>
@@ -92,17 +156,66 @@ export default function Header() {
               </Button>
             </div>
 
-            <div className="space-y-2 mb-6">
-              <Label htmlFor="api-key-input" className="text-sm font-medium">Gemini API Key</Label>
+            {user && (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40 border border-border mb-5">
+                {user.profileImageUrl ? (
+                  <img src={user.profileImageUrl} alt={displayName} className="w-9 h-9 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <User className="h-4 w-4 text-primary" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
+                  {user.email && <p className="text-xs text-muted-foreground truncate">{user.email}</p>}
+                </div>
+                <Button variant="ghost" size="sm" className="ml-auto shrink-0 h-8 text-xs gap-1.5" onClick={logout}>
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign out
+                </Button>
+              </div>
+            )}
+
+            <div className="space-y-3 mb-5">
+              <div className="flex items-center gap-2 mb-1">
+                <KeyRound className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm font-medium">Gemini API Key</Label>
+              </div>
+
+              {loadingStatus ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Checking key status...
+                </div>
+              ) : hasKey ? (
+                <div className="flex items-center justify-between p-3 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50">
+                  <div className="flex items-center gap-2 text-sm font-medium text-green-700 dark:text-green-300">
+                    <CheckCircle className="h-4 w-4 shrink-0" />
+                    API key is configured
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={handleDeleteKey}
+                    disabled={deleting}
+                    data-testid="button-delete-api-key"
+                  >
+                    {deleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                    {deleting ? "" : "Remove"}
+                  </Button>
+                </div>
+              ) : null}
+
               <div className="relative">
                 <Input
-                  id="api-key-input"
                   type={showKey ? "text" : "password"}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="Enter your Gemini API key"
+                  placeholder={hasKey ? "Enter new key to replace existing" : "Enter your Gemini API key"}
                   className="pr-10"
                   data-testid="input-api-key"
+                  onKeyDown={(e) => e.key === "Enter" && handleSaveKey()}
                 />
                 <button
                   type="button"
@@ -113,24 +226,23 @@ export default function Header() {
                   {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+
               <p className="text-xs text-muted-foreground">
-                Get your API key from{" "}
+                Get a free key from{" "}
                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                   Google AI Studio
                 </a>
-                . The key is stored only in your browser.
+                . Your key is encrypted and stored securely on the server — never in your browser.
               </p>
             </div>
 
-            {getApiKey() && (
-              <div className="flex items-center gap-2 text-sm text-primary mb-4">
-                <CheckCircle className="h-4 w-4" />
-                API key is configured
-              </div>
-            )}
-
-            <Button className="w-full font-semibold" onClick={handleSaveKey} data-testid="button-save-api-key">
-              Save API Key
+            <Button
+              className="w-full font-semibold"
+              onClick={handleSaveKey}
+              disabled={!apiKey.trim() || saving}
+              data-testid="button-save-api-key"
+            >
+              {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : hasKey ? "Replace API Key" : "Save API Key"}
             </Button>
           </div>
         </div>

@@ -1,12 +1,24 @@
 import { useState, useRef } from "react";
 import { useLocation } from "wouter";
-import { Camera, ImagePlus, Loader2, Sparkles, AlertCircle } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Sparkles, AlertCircle, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { analyzeBusinessCard, type AnalysisResult } from "@/lib/gemini";
-import { getApiKey } from "@/lib/storage";
+import type { AnalysisResult } from "@/lib/gemini";
+import { scanCard } from "@/lib/api";
 
 interface ScanPageProps {
   onAnalyzed: (result: AnalysisResult, imageUrl: string) => void;
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function Scan({ onAnalyzed }: ScanPageProps) {
@@ -15,6 +27,7 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [noKey, setNoKey] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -22,29 +35,30 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
     if (!file) return;
     setSelectedFile(file);
     setError(null);
+    setNoKey(false);
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
   }
 
   async function handleAnalyze() {
     if (!selectedFile) return;
-
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      setError("No API key found. Please add your Gemini API key in Settings (gear icon).");
-      return;
-    }
-
     setLoading(true);
     setError(null);
+    setNoKey(false);
 
     try {
-      const result = await analyzeBusinessCard(selectedFile, apiKey);
-      const imageUrl = previewUrl ?? "";
-      onAnalyzed(result, imageUrl);
+      const imageBase64 = await fileToBase64(selectedFile);
+      const mimeType = selectedFile.type || "image/jpeg";
+      const result = await scanCard(imageBase64, mimeType);
+      onAnalyzed(result, previewUrl ?? "");
       setLocation("/review");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred analyzing the card.");
+      const msg = err instanceof Error ? err.message : "An error occurred analyzing the card.";
+      if (msg.includes("Gemini API Key") || msg.includes("Settings")) {
+        setNoKey(true);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -60,7 +74,6 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
           </p>
         </div>
 
-        {/* Upload area */}
         <div
           className={`relative rounded-2xl border-2 border-dashed transition-colors mb-6 ${
             previewUrl
@@ -75,12 +88,8 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
               <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-4">
                 <ImagePlus className="h-7 w-7 text-primary" />
               </div>
-              <p className="text-sm font-medium text-foreground mb-1">
-                Tap to select an image
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Camera or photo library
-              </p>
+              <p className="text-sm font-medium text-foreground mb-1">Tap to select an image</p>
+              <p className="text-xs text-muted-foreground">Camera or photo library</p>
             </div>
           ) : (
             <div className="relative">
@@ -97,6 +106,7 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
                   setPreviewUrl(null);
                   setSelectedFile(null);
                   setError(null);
+                  setNoKey(false);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
                 className="absolute top-2 right-2 bg-background/90 backdrop-blur-sm rounded-full w-7 h-7 flex items-center justify-center text-muted-foreground hover:text-foreground border border-border text-sm font-bold"
@@ -108,7 +118,6 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
           )}
         </div>
 
-        {/* Hidden file input — no capture="environment" so iPhone shows both camera and library */}
         <input
           ref={fileInputRef}
           type="file"
@@ -118,7 +127,6 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
           data-testid="input-file"
         />
 
-        {/* Two action buttons */}
         <div className="grid grid-cols-2 gap-3 mb-6">
           <Button
             variant="outline"
@@ -140,7 +148,32 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
           </Button>
         </div>
 
-        {/* Error message */}
+        {noKey && (
+          <div
+            className="flex items-start gap-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 p-4 mb-6"
+            data-testid="error-no-key"
+          >
+            <KeyRound className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 mb-1">
+                Gemini API Key required
+              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                Please add your Gemini API Key in Settings to use this feature.
+              </p>
+              <button
+                className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300 underline underline-offset-2"
+                onClick={() => {
+                  const btn = document.querySelector<HTMLButtonElement>('[data-testid="button-settings"]');
+                  btn?.click();
+                }}
+              >
+                Open Settings →
+              </button>
+            </div>
+          </div>
+        )}
+
         {error && (
           <div
             className="flex items-start gap-3 rounded-xl bg-destructive/10 border border-destructive/20 p-4 mb-6"
@@ -151,7 +184,6 @@ export default function Scan({ onAnalyzed }: ScanPageProps) {
           </div>
         )}
 
-        {/* Analyze button */}
         <Button
           className="w-full h-12 text-base font-semibold"
           onClick={handleAnalyze}
