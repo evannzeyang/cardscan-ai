@@ -7,6 +7,7 @@ import userEventsRouter from "./user-events";
 import userNotesRouter from "./user-notes";
 import geminiKeyRouter from "./gemini-key";
 import scanRouter from "./scan";
+import profileRouter from "./profile";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(userEventsRouter);
 router.use(userNotesRouter);
 router.use(geminiKeyRouter);
 router.use(scanRouter);
+router.use(profileRouter);
 
 export default router;

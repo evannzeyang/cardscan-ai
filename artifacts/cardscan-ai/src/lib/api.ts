@@ -222,6 +222,35 @@ export async function deleteNote(contactId: string, noteId: string): Promise<voi
   });
 }
 
+export interface ApiProfile {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+  jobTitle: string | null;
+  companyName: string | null;
+  industry: string | null;
+  businessEmail: string | null;
+  businessPhone: string | null;
+  linkedinUrl: string | null;
+}
+
+export async function getUserProfile(): Promise<ApiProfile> {
+  const data = await apiFetch<{ profile: ApiProfile }>("/api/user/profile");
+  return data.profile;
+}
+
+export async function updateUserProfile(
+  body: Partial<Omit<ApiProfile, "id" | "email">>,
+): Promise<ApiProfile> {
+  const data = await apiFetch<{ profile: ApiProfile }>("/api/user/profile", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+  return data.profile;
+}
+
 export async function getGeminiKeyStatus(): Promise<{ hasKey: boolean }> {
   return apiFetch<{ hasKey: boolean }>("/api/user/gemini-key/status");
 }

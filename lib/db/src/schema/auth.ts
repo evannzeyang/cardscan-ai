@@ -20,6 +20,12 @@ export const usersTable = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   encryptedGeminiKey: text("encrypted_gemini_key"),
+  jobTitle: varchar("job_title"),
+  companyName: varchar("company_name"),
+  industry: varchar("industry"),
+  businessEmail: varchar("business_email"),
+  businessPhone: varchar("business_phone"),
+  linkedinUrl: varchar("linkedin_url"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
