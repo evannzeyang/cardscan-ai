@@ -3,20 +3,20 @@ import { useLocation } from "wouter";
 import {
   Settings, X, Eye, EyeOff, CheckCircle, TableProperties, Scan,
   CalendarDays, Trash2, LogOut, Loader2, KeyRound,
-  UserCircle2, Users, ChevronDown, UserCog, Network,
+  ChevronDown, UserCog, Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@workspace/replit-auth-web";
 import {
   getGeminiKeyStatus, setGeminiKey, deleteGeminiKey,
   getUserProfile, updateUserProfile, type ApiProfile,
 } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import NetworkingModal from "./NetworkingModal";
 
-type Modal = "none" | "settings" | "buildProfile" | "addConnections";
+type Modal = "none" | "settings" | "buildProfile" | "networking";
 
 function Avatar({ src, name, size = "sm" }: { src?: string | null; name?: string | null; size?: "sm" | "md" | "lg" }) {
   const dim = size === "lg" ? "w-16 h-16 text-xl" : size === "md" ? "w-10 h-10 text-base" : "w-8 h-8 text-sm";
@@ -137,12 +137,12 @@ export default function Header() {
                       Build Profile
                     </button>
                     <button
-                      onClick={() => openModal("addConnections")}
+                      onClick={() => openModal("networking")}
                       className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-foreground hover:bg-muted/60 transition-colors"
                       data-testid="dropdown-add-connections"
                     >
                       <Network className="h-4 w-4 text-muted-foreground" />
-                      Add Connections
+                      Networking
                     </button>
                     <div className="border-t border-border mt-1 pt-1">
                       <button
@@ -168,8 +168,8 @@ export default function Header() {
       {modal === "buildProfile" && (
         <BuildProfileModal onClose={() => setModal("none")} toast={toast} user={user} />
       )}
-      {modal === "addConnections" && (
-        <AddConnectionsModal onClose={() => setModal("none")} />
+      {modal === "networking" && (
+        <NetworkingModal onClose={() => setModal("none")} />
       )}
     </>
   );

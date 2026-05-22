@@ -251,6 +251,75 @@ export async function updateUserProfile(
   return data.profile;
 }
 
+export interface PublicUser {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  profileImageUrl: string | null;
+  jobTitle: string | null;
+  companyName: string | null;
+}
+
+export interface ConnectedUserProfile extends PublicUser {
+  industry: string | null;
+  businessEmail: string | null;
+  businessPhone: string | null;
+  linkedinUrl: string | null;
+}
+
+export interface ConnectionRow {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  status: string;
+  createdAt: string;
+  user: PublicUser | null;
+}
+
+export interface ConnectionsData {
+  incoming: ConnectionRow[];
+  outgoing: ConnectionRow[];
+  accepted: ConnectionRow[];
+}
+
+export async function searchUsers(q: string): Promise<PublicUser[]> {
+  const data = await apiFetch<{ users: PublicUser[] }>(
+    `/api/users/search?q=${encodeURIComponent(q)}`,
+  );
+  return data.users;
+}
+
+export async function getConnections(): Promise<ConnectionsData> {
+  return apiFetch<ConnectionsData>("/api/connections");
+}
+
+export async function sendConnectionRequest(receiverId: string): Promise<ConnectionRow> {
+  const data = await apiFetch<{ connection: ConnectionRow }>("/api/connections", {
+    method: "POST",
+    body: JSON.stringify({ receiverId }),
+  });
+  return data.connection;
+}
+
+export async function acceptConnection(id: string): Promise<ConnectionRow> {
+  const data = await apiFetch<{ connection: ConnectionRow }>(`/api/connections/${id}/accept`, {
+    method: "PUT",
+  });
+  return data.connection;
+}
+
+export async function declineConnection(id: string): Promise<void> {
+  await apiFetch(`/api/connections/${id}`, { method: "DELETE" });
+}
+
+export async function getConnectionUserProfile(userId: string): Promise<ConnectedUserProfile> {
+  const data = await apiFetch<{ profile: ConnectedUserProfile }>(
+    `/api/connections/users/${userId}/profile`,
+  );
+  return data.profile;
+}
+
 export async function getGeminiKeyStatus(): Promise<{ hasKey: boolean }> {
   return apiFetch<{ hasKey: boolean }>("/api/user/gemini-key/status");
 }
