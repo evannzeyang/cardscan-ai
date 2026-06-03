@@ -1,3 +1,5 @@
+import { apiUrl } from "@workspace/api-client-react";
+
 export interface ApiNote {
   id: string;
   contactId: string;
@@ -52,7 +54,7 @@ export interface ApiEvent {
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     ...options,
     credentials: "include",
     headers: {

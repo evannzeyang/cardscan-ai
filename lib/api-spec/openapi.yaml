@@ -37,36 +37,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GetCurrentAuthUserResponse"
-  /mobile-auth/token-exchange:
+  /auth/register:
     post:
-      operationId: exchangeMobileAuthorizationCode
+      operationId: registerUser
       tags: [auth]
-      summary: Exchange mobile authorization code for session token
+      summary: Register with email and password
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeBody"
+              $ref: "#/components/schemas/RegisterBody"
       responses:
-        "200":
-          description: Session token
+        "201":
+          description: Registered and signed in
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ExchangeMobileAuthorizationCodeResponse"
-  /mobile-auth/logout:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        "409":
+          description: Email already registered
+  /auth/login:
     post:
-      operationId: logoutMobileSession
+      operationId: loginUser
       tags: [auth]
-      summary: Log out mobile session
+      summary: Sign in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
       responses:
         "200":
-          description: Logged out
+          description: Signed in
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LogoutMobileSessionResponse"
+                $ref: "#/components/schemas/AuthSessionResponse"
+        "401":
+          description: Invalid credentials
+  /auth/logout:
+    post:
+      operationId: logoutUser
+      tags: [auth]
+      summary: Sign out and clear session
+      responses:
+        "200":
+          description: Signed out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
 components:
   schemas:
     HealthStatus:
@@ -104,33 +126,41 @@ components:
             - type: "null"
       required:
         - user
-    ExchangeMobileAuthorizationCodeBody:
+    RegisterBody:
       type: object
       properties:
-        code:
+        email:
           type: string
-        code_verifier:
+          format: email
+        password:
           type: string
-        redirect_uri:
+          minLength: 8
+        firstName:
           type: string
-        state:
+        lastName:
           type: string
-        nonce:
-          type: string
-          nullable: true
       required:
-        - code
-        - code_verifier
-        - redirect_uri
-        - state
-    ExchangeMobileAuthorizationCodeResponse:
+        - email
+        - password
+    LoginBody:
       type: object
       properties:
-        token:
+        email:
+          type: string
+          format: email
+        password:
           type: string
       required:
-        - token
-    LogoutMobileSessionResponse:
+        - email
+        - password
+    AuthSessionResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/AuthUser"
+      required:
+        - user
+    LogoutResponse:
       type: object
       properties:
         success:

@@ -1,35 +1,46 @@
-import * as client from "openid-client";
 import crypto from "crypto";
 import { type Request, type Response } from "express";
-import { db, sessionsTable } from "@workspace/db";
+import { db, sessionsTable, type User } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { AuthUser } from "@workspace/api-zod";
 
-export const ISSUER_URL = process.env.ISSUER_URL ?? "https://replit.com/oidc";
 export const SESSION_COOKIE = "sid";
 export const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
 
 export interface SessionData {
   user: AuthUser;
-  access_token: string;
-  refresh_token?: string;
-  expires_at?: number;
 }
 
-let oidcConfig: client.Configuration | null = null;
-
-export async function getOidcConfig(): Promise<client.Configuration> {
-  if (!oidcConfig) {
-    oidcConfig = await client.discovery(
-      new URL(ISSUER_URL),
-      process.env.REPL_ID!,
-    );
-  }
-  return oidcConfig;
+export function toAuthUser(user: Pick<
+  User,
+  "id" | "email" | "firstName" | "lastName" | "profileImageUrl"
+>): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    profileImageUrl: user.profileImageUrl,
+  };
 }
 
-export async function createSession(data: SessionData): Promise<string> {
+export function isSecureCookie(): boolean {
+  return process.env.NODE_ENV === "production";
+}
+
+export function setSessionCookie(res: Response, sid: string): void {
+  res.cookie(SESSION_COOKIE, sid, {
+    httpOnly: true,
+    secure: isSecureCookie(),
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_TTL,
+  });
+}
+
+export async function createSession(user: AuthUser): Promise<string> {
   const sid = crypto.randomBytes(32).toString("hex");
+  const data: SessionData = { user };
   await db.insert(sessionsTable).values({
     sid,
     sess: data as unknown as Record<string, unknown>,
@@ -74,7 +85,11 @@ export async function clearSession(
   sid?: string,
 ): Promise<void> {
   if (sid) await deleteSession(sid);
-  res.clearCookie(SESSION_COOKIE, { path: "/" });
+  res.clearCookie(SESSION_COOKIE, {
+    path: "/",
+    secure: isSecureCookie(),
+    sameSite: "lax",
+  });
 }
 
 export function getSessionId(req: Request): string | undefined {

@@ -35,4 +35,18 @@ app.use(authMiddleware);
 
 app.use("/api", router);
 
+app.use((err: unknown, _req, res, _next) => {
+  if (res.headersSent) {
+    return;
+  }
+
+  if (err instanceof SyntaxError && "body" in err) {
+    res.status(400).json({ error: "Invalid JSON body" });
+    return;
+  }
+
+  const message = err instanceof Error ? err.message : "Internal server error";
+  res.status(500).json({ error: message });
+});
+
 export default app;

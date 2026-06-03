@@ -146,7 +146,10 @@ export default function Header() {
                     </button>
                     <div className="border-t border-border mt-1 pt-1">
                       <button
-                        onClick={() => { setShowDropdown(false); logout(); }}
+                        onClick={() => {
+                          setShowDropdown(false);
+                          void logout();
+                        }}
                         className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
                         data-testid="dropdown-logout"
                       >

@@ -49,6 +49,7 @@ router.get("/users/search", async (req: Request, res: Response) => {
           ilike(usersTable.firstName, pattern),
           ilike(usersTable.lastName, pattern),
           ilike(usersTable.email, pattern),
+          ilike(usersTable.companyName, pattern),
         ),
       ),
     )
