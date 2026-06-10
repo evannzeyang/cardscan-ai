@@ -44,7 +44,9 @@ export default defineConfig(({ mode }) => {
       allowedHosts: true,
       proxy: {
         "/api": {
-          target: "http://127.0.0.1:8080",
+          target: mode === "production" 
+            ? "https://cardscan-ai.onrender.com" 
+            : "http://127.0.0.1:8080",
           changeOrigin: true,
         },
       },
