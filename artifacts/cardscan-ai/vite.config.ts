@@ -4,8 +4,9 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-export default defineConfig(async ({ mode }) => {
-  const envDir = path.resolve(import.meta.dirname);
+export default defineConfig(({ mode }) => {
+  const currentDir = process.cwd();
+  const envDir = path.resolve(currentDir);
   const env = loadEnv(mode, envDir, "");
 
   // Safe fallback for local development port
@@ -18,44 +19,23 @@ export default defineConfig(async ({ mode }) => {
   // Safe fallback for local development base path
   const basePath = env.BASE_PATH ?? process.env.BASE_PATH ?? "/";
 
-  const nodeEnv = env.NODE_ENV ?? process.env.NODE_ENV;
-  const replId = env.REPL_ID ?? process.env.REPL_ID;
-
   return {
     base: basePath,
     plugins: [
       react(),
       tailwindcss(),
-      runtimeErrorOverlay(),
-      // Only load Replit-specific plugins if we are actually on Replit
-      ...(nodeEnv !== "production" && replId !== undefined
-        ? [
-            await import("@replit/vite-plugin-cartographer").then((m) =>
-              m.cartographer({
-                root: path.resolve(import.meta.dirname, ".."),
-              }),
-            ),
-            await import("@replit/vite-plugin-dev-banner").then((m) =>
-              m.devBanner(),
-            ),
-          ]
-        : []),
+      runtimeErrorOverlay()
     ],
     resolve: {
       alias: {
-        "@": path.resolve(import.meta.dirname, "src"),
-        "@assets": path.resolve(
-          import.meta.dirname,
-          "..",
-          "..",
-          "attached_assets",
-        ),
+        "@": path.resolve(currentDir, "src"),
+        "@assets": path.resolve(currentDir, "..", "..", "attached_assets"),
       },
       dedupe: ["react", "react-dom"],
     },
-    root: path.resolve(import.meta.dirname),
+    root: path.resolve(currentDir),
     build: {
-      outDir: path.resolve(import.meta.dirname, "dist/public"),
+      outDir: path.resolve(currentDir, "dist/public"),
       emptyOutDir: true,
     },
     server: {

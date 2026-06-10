@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "dev": "powershell -Command \"Stop-Process -Id (Get-NetTCPConnection -LocalPort 8080,5173 -State Listen -ErrorAction SilentlyContinue).OwningProcess -Force\" 2>$null; pnpm --parallel --filter @workspace/api-server --filter @workspace/cardscan-ai run dev",
+    "db:push": "node --env-file=.env ./scripts/push-db.mjs",
+    "dev": "pnpm run db:push && powershell -Command \"Stop-Process -Id (Get-NetTCPConnection -LocalPort 8080,5173 -State Listen -ErrorAction SilentlyContinue).OwningProcess -Force\" 2>$null; pnpm --parallel --filter @workspace/api-server --filter @workspace/cardscan-ai run dev",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

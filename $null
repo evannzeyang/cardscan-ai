@@ -3,6 +3,7 @@ At line:1 char:18
 + ... Process -Id (Get-NetTCPConnection -LocalPort 8080,5173 -State Listen  ...
 +                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     + CategoryInfo          : InvalidData: (:) [Stop-Process], ParameterBindingValidationException
-    + FullyQualifiedErrorId : ParameterArgumentValidationErrorNullNotAllowed,Microsoft.PowerShell.C 
-   ommands.StopProcessCommand
+    + FullyQualifiedErrorId : ParameterArgumentValidationErrorNullNotAllowed,Microsoft.PowerShell.Commands.StopProce 
+   ssCommand
  
+^C
